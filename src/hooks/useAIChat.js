@@ -60,6 +60,9 @@ export const useAIChat = ({
 	const [status, setStatus] = useState(CHAT_STATUS.IDLE);
 	const [sessionId, setSessionId] = useState(() => generateSessionId());
 
+	// Streaming state
+	const [streamingContent, setStreamingContent] = useState("");
+
 	// Tool execution state
 	const [activeToolCall, setActiveToolCall] = useState(null);
 	const [executedTools, setExecutedTools] = useState([]);
@@ -274,6 +277,9 @@ export const useAIChat = ({
 				let response = null;
 				let allToolResults = [];
 
+				// Clear streaming content before starting
+				setStreamingContent("");
+
 				// Streaming completion
 				await openaiClient.createStreamingCompletion(
 					{
@@ -281,8 +287,10 @@ export const useAIChat = ({
 						tools: tools.length > 0 ? tools : undefined,
 						tool_choice: tools.length > 0 ? "auto" : undefined,
 					},
-					// onChunk - streaming content updates could be added here
-					() => {},
+					// onChunk - update streaming content for real-time display
+					(chunk) => {
+						setStreamingContent((prev) => prev + chunk);
+					},
 					// onComplete
 					async (fullMessage, toolCalls) => {
 						if (toolCalls && toolCalls.length > 0) {
@@ -348,6 +356,7 @@ export const useAIChat = ({
 				setActiveToolCall(null);
 				setExecutedTools([]);
 				setPendingTools([]);
+				setStreamingContent("");
 			}
 		},
 		[
@@ -405,6 +414,7 @@ export const useAIChat = ({
 		error,
 		status,
 		sessionId,
+		streamingContent,
 
 		// Tool execution state
 		activeToolCall,
