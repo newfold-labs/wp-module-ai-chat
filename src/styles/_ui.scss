@@ -1,0 +1,98 @@
+/* AI Avatar */
+.nfd-ai-chat-avatar {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	border-radius: 50%;
+	background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+	color: var(--nfd-ai-chat-color-white);
+
+	svg {
+		stroke: currentColor;
+		fill: none;
+	}
+}
+
+/* Error Alert */
+.nfd-ai-chat-error-alert {
+	display: flex;
+	align-items: flex-start;
+	gap: 12px;
+	padding: 12px 16px;
+	background: rgba(214, 54, 56, 0.08);
+	border: 1px solid var(--nfd-ai-chat-color-error);
+	border-radius: 8px;
+	margin: 8px 0;
+}
+
+.nfd-ai-chat-error-alert__icon {
+	flex-shrink: 0;
+	color: var(--nfd-ai-chat-color-error);
+	margin-top: 2px;
+}
+
+.nfd-ai-chat-error-alert__content {
+	flex: 1;
+}
+
+.nfd-ai-chat-error-alert__message {
+	font-size: var(--nfd-ai-chat-font-size-base);
+	color: var(--nfd-ai-chat-color-error);
+	line-height: 1.5;
+}
+
+/* Suggestion Button */
+.components-button.nfd-ai-chat-suggestion {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 8px 12px;
+	background: var(--nfd-ai-chat-color-white);
+	border: 1px solid var(--nfd-ai-chat-color-border);
+	border-radius: 20px;
+	font-size: var(--nfd-ai-chat-font-size-sm);
+	color: var(--nfd-ai-chat-color-text-secondary);
+	cursor: pointer;
+	transition: all 0.15s ease;
+
+	&:hover {
+		background: var(--nfd-ai-chat-color-background);
+		border-color: var(--nfd-ai-chat-color-primary);
+		color: var(--nfd-ai-chat-color-primary);
+	}
+}
+
+.nfd-ai-chat-suggestion__icon {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.nfd-ai-chat-suggestion__text {
+	white-space: nowrap;
+}
+
+/* Tool Status Line */
+.nfd-ai-chat-tool-status-line {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	margin-top: 8px;
+	padding-top: 8px;
+	border-top: 1px solid var(--nfd-ai-chat-color-border);
+	font-size: var(--nfd-ai-chat-font-size-sm);
+	color: var(--nfd-ai-chat-color-grey-dark);
+}
+
+.nfd-ai-chat-tool-status-line__icon {
+	color: var(--nfd-ai-chat-color-success);
+	flex-shrink: 0;
+
+	&--error {
+		color: var(--nfd-ai-chat-color-error);
+	}
+}
+
+.nfd-ai-chat-tool-status-line__text {
+	color: var(--nfd-ai-chat-color-grey-dark);
+}
