@@ -208,7 +208,7 @@ const TypingIndicator = ({
 							type="button"
 							className="nfd-ai-chat-tool-execution__header"
 							onClick={() => setIsExpanded(!isExpanded)}
-							aria-expanded={isExpanded}
+							aria-expanded={isExpanded ? "true" : "false"}
 						>
 							{isExpanded ? (
 								<ChevronDown className="nfd-ai-chat-tool-execution__chevron" size={12} />
