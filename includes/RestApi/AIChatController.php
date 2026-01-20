@@ -178,7 +178,9 @@ class AIChatController extends WP_REST_Controller {
 
 			// Handle content (can be string or null for tool calls)
 			if ( isset( $message['content'] ) ) {
-				$sanitized_message['content'] = wp_kses_post( $message['content'] );
+				$allowed_html       = wp_kses_allowed_html( 'post' );
+				$allowed_protocols  = array_merge( wp_allowed_protocols(), array( 'data' ) );
+				$sanitized_message['content'] = wp_kses( $message['content'], $allowed_html, $allowed_protocols );
 			}
 
 			// Handle tool calls from assistant
