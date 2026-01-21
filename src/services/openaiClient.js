@@ -30,11 +30,13 @@ export class OpenAIError extends Error {
  * @param {Object} options           Configuration options
  * @param {string} options.configKey - Window config object name (default: 'nfdAIChat')
  * @param {string} options.apiPath   - REST API path suffix (default: 'ai')
+ * @param {string} options.context   - Context for system prompt selection (default: 'help')
  */
 export class CloudflareOpenAIClient {
 	constructor(options = {}) {
 		this.configKey = options.configKey || "nfdAIChat";
 		this.apiPath = options.apiPath || "ai";
+		this.context = options.context || "help";
 		this.openai = null;
 		this.config = null;
 	}
@@ -109,6 +111,7 @@ export class CloudflareOpenAIClient {
 				stream: false,
 				max_tokens: request.max_tokens,
 				temperature: request.temperature,
+				context: request.context || this.context,
 			});
 
 			return response;
@@ -133,6 +136,7 @@ export class CloudflareOpenAIClient {
 				...request,
 				messages: request.messages,
 				stream: true,
+				context: request.context || this.context,
 			});
 
 			let fullMessage = "";

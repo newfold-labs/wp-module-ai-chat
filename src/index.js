@@ -6,12 +6,7 @@
  */
 
 // Services
-export {
-	WordPressMCPClient,
-	createMCPClient,
-	mcpClient,
-	MCPError,
-} from "./services/mcpClient";
+export { WordPressMCPClient, createMCPClient, mcpClient, MCPError } from "./services/mcpClient";
 
 export {
 	CloudflareOpenAIClient,
