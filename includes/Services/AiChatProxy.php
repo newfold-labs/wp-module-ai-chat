@@ -323,21 +323,14 @@ class AiChatProxy {
 	 * @return bool
 	 */
 	private function should_verify_ssl() {
-		// In development environments, disable SSL verification
-		if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
+		// Allow explicitly disabling SSL verification via a dedicated constant.
+		// This should only be used in controlled development environments
+		// where self-signed certificates or similar setups are in use.
+		if ( defined( 'NFD_AI_DISABLE_SSL_VERIFY' ) && NFD_AI_DISABLE_SSL_VERIFY ) {
 			return false;
 		}
 
-		// Check if we're on a local development environment
-		$site_url = get_site_url();
-		if ( strpos( $site_url, 'localhost' ) !== false ||
-			strpos( $site_url, '127.0.0.1' ) !== false ||
-			strpos( $site_url, '.test' ) !== false ||
-			strpos( $site_url, '.local' ) !== false ) {
-			return false;
-		}
-
-		// For production, always verify SSL
+		// By default, always verify SSL.
 		return true;
 	}
 }
