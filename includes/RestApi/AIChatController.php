@@ -139,6 +139,11 @@ class AIChatController extends WP_REST_Controller {
 			$request_data['temperature'] = $temperature;
 		}
 
+		$mode = $request->get_param( 'mode' );
+		if ( null !== $mode ) {
+			$request_data['mode'] = $mode;
+		}
+
 		$stream = $request->get_param( 'stream' );
 
 		// Handle streaming vs non-streaming

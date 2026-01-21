@@ -102,7 +102,7 @@ class AiChatProxy {
 			'model'    => $request_data['model'] ?? self::DEFAULT_MODEL,
 			'messages' => $request_data['messages'] ?? array(),
 			'stream'   => false,
-			'context'  => $request_data['context'] ?? 'help',
+			'mode'     => $request_data['mode'] ?? 'help',
 		);
 
 		// Add optional parameters
@@ -173,7 +173,7 @@ class AiChatProxy {
 			'model'    => $request_data['model'] ?? self::DEFAULT_MODEL,
 			'messages' => $request_data['messages'] ?? array(),
 			'stream'   => true,
-			'context'  => $request_data['context'] ?? 'help',
+			'mode'     => $request_data['mode'] ?? 'help',
 		);
 
 		// Add optional parameters
