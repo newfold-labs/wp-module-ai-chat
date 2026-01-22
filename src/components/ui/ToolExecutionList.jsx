@@ -257,7 +257,7 @@ const ToolExecutionList = ({ executedTools = [], toolResults = [] }) => {
 				<span>
 					{hasErrors
 						? __("Some actions failed", "wp-module-ai-chat")
-						: __("Changes applied", "wp-module-ai-chat")}
+						: __("Actions completed", "wp-module-ai-chat")}
 				</span>
 				<span className="nfd-ai-chat-tool-execution__header-count">({totalTools})</span>
 			</button>
