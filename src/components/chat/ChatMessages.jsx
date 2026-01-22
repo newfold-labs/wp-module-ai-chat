@@ -55,6 +55,7 @@ const ChatMessages = ({
 						message={msg.content}
 						type={msg.type}
 						executedTools={msg.executedTools}
+						toolResults={msg.toolResults}
 					/>
 				))}
 			{error && <ErrorAlert message={error} />}

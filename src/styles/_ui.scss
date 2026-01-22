@@ -71,28 +71,3 @@
 .nfd-ai-chat-suggestion__text {
 	white-space: nowrap;
 }
-
-/* Tool Status Line */
-.nfd-ai-chat-tool-status-line {
-	display: flex;
-	align-items: center;
-	gap: 6px;
-	margin-top: 8px;
-	padding-top: 8px;
-	border-top: 1px solid var(--nfd-ai-chat-color-border);
-	font-size: var(--nfd-ai-chat-font-size-sm);
-	color: var(--nfd-ai-chat-color-grey-dark);
-}
-
-.nfd-ai-chat-tool-status-line__icon {
-	color: var(--nfd-ai-chat-color-success);
-	flex-shrink: 0;
-
-	&--error {
-		color: var(--nfd-ai-chat-color-error);
-	}
-}
-
-.nfd-ai-chat-tool-status-line__text {
-	color: var(--nfd-ai-chat-color-grey-dark);
-}

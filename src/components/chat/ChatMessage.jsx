@@ -20,9 +20,10 @@ import ToolExecutionList from "../ui/ToolExecutionList";
  * @param {string} props.message            - The message content to display.
  * @param {string} [props.type="assistant"] - The message type ("user" or "assistant").
  * @param {Array}  [props.executedTools=[]] - List of executed tools to show inline.
+ * @param {Array}  [props.toolResults=[]]   - Results from tool executions.
  * @return {JSX.Element} The ChatMessage component.
  */
-const ChatMessage = ({ message, type = "assistant", executedTools = [] }) => {
+const ChatMessage = ({ message, type = "assistant", executedTools = [], toolResults = [] }) => {
 	const isUser = type === "user";
 
 	const { content, isRichContent } = useMemo(() => {
@@ -62,7 +63,7 @@ const ChatMessage = ({ message, type = "assistant", executedTools = [] }) => {
 					<div className="nfd-ai-chat-message__content">{content}</div>
 				))}
 			{executedTools && executedTools.length > 0 && (
-				<ToolExecutionList executedTools={executedTools} />
+				<ToolExecutionList executedTools={executedTools} toolResults={toolResults} />
 			)}
 		</div>
 	);
