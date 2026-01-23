@@ -3,9 +3,10 @@
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	border-radius: 50%;
-	background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+	border-radius: var(--nfd-ai-chat-radius-full);
+	background: linear-gradient(135deg, var(--nfd-ai-chat-color-primary) 0%, var(--nfd-ai-chat-color-primary-hover) 100%);
 	color: var(--nfd-ai-chat-color-white);
+	transition: transform 0.2s ease, box-shadow 0.2s ease;
 
 	svg {
 		stroke: currentColor;
@@ -45,20 +46,27 @@
 .components-button.nfd-ai-chat-suggestion {
 	display: flex;
 	align-items: center;
-	gap: 8px;
-	padding: 8px 12px;
+	gap: var(--nfd-ai-chat-spacing-sm);
+	padding: var(--nfd-ai-chat-spacing-sm) var(--nfd-ai-chat-spacing-md);
 	background: var(--nfd-ai-chat-color-white);
 	border: 1px solid var(--nfd-ai-chat-color-border);
-	border-radius: 20px;
+	border-radius: var(--nfd-ai-chat-radius-full);
 	font-size: var(--nfd-ai-chat-font-size-sm);
 	color: var(--nfd-ai-chat-color-text-secondary);
 	cursor: pointer;
 	transition: all 0.15s ease;
+	box-shadow: var(--nfd-ai-chat-shadow-sm);
 
 	&:hover {
 		background: var(--nfd-ai-chat-color-background);
 		border-color: var(--nfd-ai-chat-color-primary);
 		color: var(--nfd-ai-chat-color-primary);
+		transform: translateY(-1px);
+		box-shadow: var(--nfd-ai-chat-shadow-md);
+	}
+
+	&:active {
+		transform: translateY(0);
 	}
 }
 
@@ -95,4 +103,38 @@
 
 .nfd-ai-chat-tool-status-line__text {
 	color: var(--nfd-ai-chat-color-grey-dark);
+}
+
+/* Clear Chat Button */
+.nfd-clear-chat-button {
+	padding: 8px 12px;
+	font-size: 12px;
+	border: 1px solid var(--nfd-ai-chat-color-border);
+	border-radius: var(--nfd-ai-chat-radius-sm);
+	background: var(--nfd-ai-chat-color-white);
+	cursor: pointer;
+	color: var(--nfd-ai-chat-color-text-secondary);
+	transition: all 0.2s ease;
+	font-family: inherit;
+	white-space: nowrap;
+	
+	&:hover {
+		background: var(--nfd-ai-chat-color-background);
+		border-color: var(--nfd-ai-chat-color-grey-medium);
+		color: var(--nfd-ai-chat-color-text);
+	}
+	
+	&:active {
+		transform: scale(0.98);
+	}
+	
+	&:focus {
+		outline: 2px solid var(--nfd-ai-chat-color-primary);
+		outline-offset: 2px;
+	}
+	
+	&:disabled {
+		opacity: 0.5;
+		cursor: not-allowed;
+	}
 }

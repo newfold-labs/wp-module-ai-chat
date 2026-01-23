@@ -25,7 +25,7 @@ class Application {
 	public function __construct( Container $container ) {
 		$this->container = $container;
 
-		// Initialize REST API
-		new RestApi();
+		// Initialize REST API with container
+		new RestApi( $container );
 	}
 }

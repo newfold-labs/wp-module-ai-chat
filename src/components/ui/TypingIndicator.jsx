@@ -18,6 +18,29 @@ import classnames from "classnames";
  */
 const getAbilityDetails = (abilityName) => {
 	const abilityMap = {
+		"nfd-agents/get-global-styles": {
+			title: __("Reading Site Colors", "wp-module-ai-chat"),
+			description: __(
+				"Fetching current color palette and typography settings",
+				"wp-module-ai-chat"
+			),
+		},
+		"nfd-agents/update-global-palette": {
+			title: __("Updating Site Colors", "wp-module-ai-chat"),
+			description: __("Applying new colors to global styles", "wp-module-ai-chat"),
+		},
+		// Legacy tool names for backward compatibility
+		"newfold-agents/get-global-styles": {
+			title: __("Reading Site Colors", "wp-module-ai-chat"),
+			description: __(
+				"Fetching current color palette and typography settings",
+				"wp-module-ai-chat"
+			),
+		},
+		"newfold-agents/update-global-palette": {
+			title: __("Updating Site Colors", "wp-module-ai-chat"),
+			description: __("Applying new colors to global styles", "wp-module-ai-chat"),
+		},
 		"blu/get-global-styles": {
 			title: __("Reading Site Colors", "wp-module-ai-chat"),
 			description: __(
@@ -66,7 +89,7 @@ const getToolDetails = (toolName, args = {}) => {
 		const details = getAbilityDetails(abilityName);
 
 		let params = null;
-		if (abilityName === "blu/update-global-palette" && args?.parameters?.colors) {
+		if ((abilityName === "nfd-agents/update-global-palette" || abilityName === "newfold-agents/update-global-palette" || abilityName === "blu/update-global-palette") && args?.parameters?.colors) {
 			const colorCount = args.parameters.colors.length;
 			params = `${colorCount} color${colorCount !== 1 ? "s" : ""}`;
 		}
@@ -178,7 +201,7 @@ const TypingIndicator = ({
 			case "received":
 				return __("Message received", "wp-module-ai-chat");
 			case "generating":
-				return __("Thinking", "wp-module-ai-chat");
+				return __("Agent is typing", "wp-module-ai-chat");
 			case "tool_call":
 				return __("Executing actions", "wp-module-ai-chat");
 			case "summarizing":
@@ -188,7 +211,7 @@ const TypingIndicator = ({
 			case "failed":
 				return __("Error occurred", "wp-module-ai-chat");
 			default:
-				return __("Thinking", "wp-module-ai-chat");
+				return __("Agent is typing", "wp-module-ai-chat");
 		}
 	};
 
@@ -279,7 +302,9 @@ const TypingIndicator = ({
 		<div className="nfd-ai-chat-message nfd-ai-chat-message--assistant">
 			<div className="nfd-ai-chat-message__content">
 				<div className="nfd-ai-chat-typing-indicator">
-					<Loader2 className="nfd-ai-chat-typing-indicator__spinner" size={16} />
+					<span className="nfd-ai-chat-typing-indicator__dots" aria-hidden="true">
+						<span></span><span></span><span></span>
+					</span>
 					<span className="nfd-ai-chat-typing-indicator__text">{getStatusText()}</span>
 				</div>
 			</div>

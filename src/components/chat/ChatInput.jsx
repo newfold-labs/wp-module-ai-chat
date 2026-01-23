@@ -9,6 +9,7 @@ import { __ } from "@wordpress/i18n";
  * External dependencies
  */
 import { ArrowUp, CircleStop } from "lucide-react";
+import { INPUT } from "../../config/constants";
 
 /**
  * ChatInput Component
@@ -32,7 +33,9 @@ const ChatInput = ({
 	contextComponent = null,
 }) => {
 	const [message, setMessage] = useState("");
+	const [isStopping, setIsStopping] = useState(false);
 	const textareaRef = useRef(null);
+	const stopButtonRef = useRef(null);
 
 	const defaultPlaceholder = __("How can I help you today?", "wp-module-ai-chat");
 
@@ -40,8 +43,17 @@ const ChatInput = ({
 	useEffect(() => {
 		if (textareaRef.current) {
 			textareaRef.current.style.height = "auto";
-			const newHeight = Math.min(textareaRef.current.scrollHeight, 200);
+			const scrollHeight = textareaRef.current.scrollHeight;
+			const newHeight = Math.min(scrollHeight, INPUT.MAX_HEIGHT);
 			textareaRef.current.style.height = `${newHeight}px`;
+			
+			// Only show scrollbar when content actually overflows
+			// This prevents the disabled scrollbar from appearing when empty
+			if (scrollHeight > INPUT.MAX_HEIGHT) {
+				textareaRef.current.style.overflowY = "auto";
+			} else {
+				textareaRef.current.style.overflowY = "hidden";
+			}
 		}
 	}, [message]);
 
@@ -50,7 +62,7 @@ const ChatInput = ({
 		if (!disabled && textareaRef.current) {
 			setTimeout(() => {
 				textareaRef.current.focus();
-			}, 100);
+			}, INPUT.FOCUS_DELAY);
 		}
 	}, [disabled]);
 
@@ -60,6 +72,7 @@ const ChatInput = ({
 			setMessage("");
 			if (textareaRef.current) {
 				textareaRef.current.style.height = "auto";
+				textareaRef.current.style.overflowY = "hidden";
 				textareaRef.current.focus();
 			}
 		}
@@ -70,6 +83,27 @@ const ChatInput = ({
 			e.preventDefault();
 			handleSubmit();
 		}
+	};
+
+	const handleStopRequest = () => {
+		// Prevent multiple rapid clicks (debounce)
+		if (isStopping) {
+			return;
+		}
+
+		// Immediately disable button to prevent rage clicks
+		setIsStopping(true);
+		
+		// Call the stop handler
+		if (onStopRequest) {
+			onStopRequest();
+		}
+
+		// Re-enable after a short delay to allow for re-connection if needed
+		// This prevents the button from being permanently disabled
+		setTimeout(() => {
+			setIsStopping(false);
+		}, INPUT.STOP_DEBOUNCE);
 	};
 
 	return (
@@ -90,10 +124,13 @@ const ChatInput = ({
 					{contextComponent}
 					{disabled ? (
 						<Button
+							ref={stopButtonRef}
 							icon={<CircleStop width={16} height={16} />}
 							label={__("Stop generating", "wp-module-ai-chat")}
-							onClick={onStopRequest}
+							onClick={handleStopRequest}
 							className="nfd-ai-chat-input__stop"
+							disabled={isStopping}
+							aria-busy={isStopping}
 						/>
 					) : (
 						<Button

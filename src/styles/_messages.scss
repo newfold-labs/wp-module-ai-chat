@@ -2,12 +2,15 @@
 
 .nfd-ai-chat-messages {
 	display: flex;
-	flex: 1 1 auto;
+	flex: 1 1 0%; // Use 0% basis to properly fill flex container
 	flex-direction: column;
 	overflow-y: auto;
-	padding: 20px 24px;
-	gap: 16px;
+	overflow-x: hidden;
+	padding: var(--nfd-ai-chat-spacing-lg) var(--nfd-ai-chat-spacing-lg);
+	gap: var(--nfd-ai-chat-spacing-md);
 	min-height: 0;
+	max-height: 100%; // Don't exceed parent height
+	background: var(--nfd-ai-chat-color-white);
 
 	@include mixins.custom-scrollbar;
 }
@@ -130,17 +133,24 @@
 		.nfd-ai-chat-message__content {
 			flex: 1;
 			width: 100%;
+			max-width: 85%;
 			line-height: 1.6;
 			color: var(--nfd-ai-chat-color-text);
-			background: none;
-			padding: 4px 0 0 0;
-			border-radius: 0;
+			background: var(--nfd-ai-chat-color-background);
+			padding: var(--nfd-ai-chat-spacing-md) var(--nfd-ai-chat-spacing-lg);
+			border-radius: var(--nfd-ai-chat-radius-lg);
+			border: 1px solid var(--nfd-ai-chat-color-border);
+			box-shadow: var(--nfd-ai-chat-shadow-sm);
 			white-space: pre-wrap;
 
 			&--rich {
 				white-space: normal;
 				> *:first-child { margin-top: 0; }
 				> *:last-child { margin-bottom: 0; }
+			}
+
+			@media (max-width: 480px) {
+				max-width: 95%;
 			}
 		}
 	}
@@ -149,15 +159,17 @@
 		justify-content: flex-end;
 
 		.nfd-ai-chat-message__content {
-			background: var(--nfd-ai-chat-color-background);
-			padding: 8px 16px;
-			border-radius: 12px;
+			background: var(--nfd-ai-chat-color-primary, var(--nfd-ai-chat-color-background));
+			padding: 10px 16px;
+			border-radius: var(--nfd-ai-chat-radius-lg);
 			line-height: 1.5;
-			color: var(--nfd-ai-chat-color-text-secondary);
+			color: var(--nfd-ai-chat-color-white, var(--nfd-ai-chat-color-text-secondary));
 			max-width: 70%;
 			white-space: pre-wrap;
 			position: relative;
 			overflow-wrap: break-word;
+			box-shadow: var(--nfd-ai-chat-shadow-sm);
+			transition: transform 0.15s ease, box-shadow 0.15s ease;
 		}
 	}
 }

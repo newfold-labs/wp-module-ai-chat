@@ -3,7 +3,8 @@
 .nfd-ai-chat-input {
 	padding: 16px;
 	background: var(--nfd-ai-chat-color-white);
-	z-index: 10;
+	z-index: 25;
+	position: relative;
 	border-top: 1px solid var(--nfd-ai-chat-color-border);
 }
 
@@ -50,7 +51,7 @@
 	color: var(--nfd-ai-chat-color-text);
 	min-height: 24px;
 	max-height: 200px;
-	overflow-y: auto;
+	overflow-y: hidden; // Default to hidden, will be set to auto via JS when content overflows
 
 	&:focus {
 		outline: none;
@@ -116,6 +117,9 @@
 	&:hover:not(:disabled) {
 		stroke: var(--nfd-ai-chat-color-primary);
 		background: var(--nfd-ai-chat-color-primary-light-12);
+		transform: translateY(-1px);
+		box-shadow: var(--nfd-ai-chat-shadow-sm);
+		transition: all 0.15s ease;
 	}
 
 	&:focus:not(:disabled) {
@@ -125,13 +129,33 @@
 	}
 
 	&:active:not(:disabled) {
+		transform: translateY(0);
 		stroke: var(--nfd-ai-chat-color-primary-hover);
 		background: var(--nfd-ai-chat-color-primary-light-20);
 	}
 }
 
 .components-button.nfd-ai-chat-input__stop {
+	stroke: var(--nfd-ai-chat-color-error);
+	color: var(--nfd-ai-chat-color-error);
+
 	&:hover:not(:disabled) {
-		color: var(--nfd-ai-chat-color-error);
+		background: var(--nfd-ai-chat-color-error-alpha-10);
+		stroke: var(--nfd-ai-chat-color-error-hover);
+		color: var(--nfd-ai-chat-color-error-hover);
+		transform: translateY(-1px);
+		box-shadow: var(--nfd-ai-chat-shadow-sm);
+	}
+
+	&:active:not(:disabled) {
+		transform: translateY(0);
+		background: var(--nfd-ai-chat-color-error-alpha-15);
+	}
+
+	&:disabled,
+	&[aria-busy="true"] {
+		opacity: 0.5;
+		cursor: not-allowed;
+		pointer-events: none;
 	}
 }

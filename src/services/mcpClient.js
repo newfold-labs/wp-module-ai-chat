@@ -2,7 +2,7 @@
  * WordPress MCP Client
  *
  * MCP client implementation using the official TypeScript SDK
- * for WordPress integration with nonce-based authentication.
+ * for WordPress integration with JWT authentication.
  * Configurable for use across different modules.
  */
 
@@ -125,15 +125,14 @@ export class WordPressMCPClient {
 				}
 			);
 
-			// Create HTTP transport with WordPress authentication headers
-			this.transport = new StreamableHTTPClientTransport(new URL(mcpEndpoint), {
-				requestInit: {
-					headers: {
-						"X-WP-Nonce": config.nonce,
-						"Content-Type": "application/json",
-					},
+		// Create HTTP transport
+		this.transport = new StreamableHTTPClientTransport(new URL(mcpEndpoint), {
+			requestInit: {
+				headers: {
+					"Content-Type": "application/json",
 				},
-			});
+			},
+		});
 
 			// Connect using the SDK
 			await this.client.connect(this.transport);

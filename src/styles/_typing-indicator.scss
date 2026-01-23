@@ -2,18 +2,45 @@
 .nfd-ai-chat-typing-indicator {
 	display: flex;
 	align-items: center;
-	gap: 8px;
-	padding: 4px 0;
+	gap: var(--nfd-ai-chat-spacing-sm);
+	padding: var(--nfd-ai-chat-spacing-xs) 0;
 }
 
-.nfd-ai-chat-typing-indicator__spinner {
-	color: var(--nfd-ai-chat-color-primary);
-	animation: nfd-ai-chat-spin 1s linear infinite;
+.nfd-ai-chat-typing-indicator__dots {
+	display: flex;
+	align-items: center;
+	gap: var(--nfd-ai-chat-spacing-xs);
+
+	span {
+		width: 6px;
+		height: 6px;
+		border-radius: 50%;
+		background: var(--nfd-ai-chat-color-grey-dark);
+		animation: nfd-ai-chat-typing-bounce 1.4s ease-in-out infinite both;
+
+		&:nth-child(2) {
+			animation-delay: 0.2s;
+		}
+
+		&:nth-child(3) {
+			animation-delay: 0.4s;
+		}
+	}
+}
+
+@keyframes nfd-ai-chat-typing-bounce {
+	0%, 60%, 100% {
+		transform: translateY(0);
+	}
+	30% {
+		transform: translateY(-4px);
+	}
 }
 
 .nfd-ai-chat-typing-indicator__text {
 	font-size: var(--nfd-ai-chat-font-size-base);
 	color: var(--nfd-ai-chat-color-grey-dark);
+	min-width: 0;
 }
 
 @keyframes nfd-ai-chat-spin {
