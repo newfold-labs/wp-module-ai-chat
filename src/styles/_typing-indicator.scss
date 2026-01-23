@@ -93,8 +93,6 @@
 .nfd-ai-chat-tool-execution__list {
 	display: flex;
 	flex-direction: column;
-	gap: 4px;
-	padding: 8px 0 0 18px;
 }
 
 .nfd-ai-chat-tool-execution__item {
@@ -146,4 +144,11 @@
 	font-size: var(--nfd-ai-chat-font-size-sm);
 	color: var(--nfd-ai-chat-color-grey-dark);
 	padding-left: 18px;
+}
+
+.nfd-ai-chat-tool-execution__item-summary {
+	font-size: var(--nfd-ai-chat-font-size-sm);
+	color: var(--nfd-ai-chat-color-grey-medium);
+	padding-left: 18px;
+	margin-top: 2px;
 }

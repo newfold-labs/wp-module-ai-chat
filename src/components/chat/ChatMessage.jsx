@@ -30,6 +30,7 @@ import InlineApproval from "../ui/InlineApproval";
  * @param {string} [props.conversationId]  - Conversation ID for message correlation.
  * @param {Function} [props.onClearTyping] - Callback to clear typing indicator.
  * @param {string} [props.brandId]         - Brand identifier for styling.
+ * @param {Array}  [props.toolResults=[]]   - Results from tool executions.
  * @return {JSX.Element} The ChatMessage component.
  */
 const ChatMessage = ({
@@ -45,6 +46,7 @@ const ChatMessage = ({
 	conversationId,
 	onClearTyping,
 	brandId,
+	toolResults = [],
 }) => {
 	// If this is an approval request message, render inline approval
 	if (type === 'approval_request') {
@@ -70,7 +72,6 @@ const ChatMessage = ({
 		// Fall through to regular message rendering below
 		// The message content should already be updated to show cancellation
 	}
-
 	const isUser = type === "user";
 
 	const { content, isRichContent } = useMemo(() => {
@@ -111,7 +112,7 @@ const ChatMessage = ({
 					<div className="nfd-ai-chat-message__content">{content}</div>
 				))}
 			{executedTools && executedTools.length > 0 && (
-				<ToolExecutionList executedTools={executedTools} />
+				<ToolExecutionList executedTools={executedTools} toolResults={toolResults} />
 			)}
 		</div>
 	);

@@ -80,6 +80,7 @@ const ChatMessages = ({
 						conversationId={conversationId}
 						onClearTyping={onClearTyping}
 						brandId={brandId}
+						toolResults={msg.toolResults}
 					/>
 				))}
 			{error && <ErrorAlert message={error} />}
