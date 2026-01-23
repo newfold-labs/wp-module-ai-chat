@@ -7,8 +7,9 @@
 
 import { useState, useEffect, useCallback } from '@wordpress/element';
 import { __, sprintf } from '@wordpress/i18n';
-import { APPROVAL, UI } from '../../config/constants';
+import { APPROVAL } from '../../config/constants';
 import { generateSuccessMessage } from '../../utils/messageUtils';
+import '../../styles/_approval-dialog.scss';
 
 /**
  * ApprovalDialog Component
@@ -173,18 +174,6 @@ const ApprovalDialog = ({
 	return (
 		<div
 			className="nfd-approval-dialog-overlay"
-			style={{
-				position: 'fixed',
-				top: 0,
-				left: 0,
-				right: 0,
-				bottom: 0,
-				backgroundColor: 'rgba(0, 0, 0, 0.5)',
-				display: 'flex',
-				alignItems: 'center',
-				justifyContent: 'center',
-				zIndex: UI.Z_INDEX_MODAL,
-			}}
 			onClick={(e) => {
 				// Close on overlay click
 				if (e.target === e.currentTarget) {
@@ -194,28 +183,13 @@ const ApprovalDialog = ({
 		>
 			<div
 				className="nfd-approval-dialog"
-				style={{
-					backgroundColor: '#fff',
-					borderRadius: '12px',
-					padding: '24px',
-					maxWidth: UI.MAX_WIDTH_DIALOG,
-					width: '90%',
-					boxShadow: '0 7px 29px rgba(100, 100, 111, 0.3)',
-				}}
 				onClick={(e) => e.stopPropagation()}
 			>
-				<div style={{ marginBottom: '20px' }}>
-					<h2
-						style={{
-							fontSize: '20px',
-							fontWeight: 'bold',
-							marginBottom: '8px',
-							color: '#1d2327',
-						}}
-					>
+				<div className="nfd-approval-dialog__header">
+					<h2 className="nfd-approval-dialog__title">
 						{ __( 'Please Confirm', 'wp-module-ai-chat' ) }
 					</h2>
-					<p style={{ color: '#646970', fontSize: '14px' }}>
+					<p className="nfd-approval-dialog__description">
 						{ sprintf(
 							__( "You'd like to %s", 'wp-module-ai-chat' ),
 							getActionDisplayName(action || tool_name).toLowerCase()
@@ -223,42 +197,18 @@ const ApprovalDialog = ({
 					</p>
 				</div>
 
-				<div
-					style={{
-						backgroundColor: '#f6f7f7',
-						borderRadius: '8px',
-						padding: '16px',
-						marginBottom: '20px',
-					}}
-				>
-					<h3
-						style={{
-							fontSize: '14px',
-							fontWeight: '600',
-							marginBottom: '12px',
-							color: '#1d2327',
-						}}
-					>
+				<div className="nfd-approval-dialog__details">
+					<h3 className="nfd-approval-dialog__details-title">
 						{ __( 'Action Details:', 'wp-module-ai-chat' ) }
 					</h3>
-					<div style={{ fontSize: '13px', color: '#50575e' }}>
-						<div style={{ marginBottom: '8px' }}>
+					<div className="nfd-approval-dialog__details-content">
+						<div className="nfd-approval-dialog__tool-info">
 							<strong>{ __( 'Tool:', 'wp-module-ai-chat' ) }</strong> {tool_name || __( 'N/A', 'wp-module-ai-chat' )}
 						</div>
 						{tool_arguments && Object.keys(tool_arguments).length > 0 && (
-							<div>
+							<div className="nfd-approval-dialog__arguments">
 								<strong>{ __( 'Arguments:', 'wp-module-ai-chat' ) }</strong>
-								<pre
-									style={{
-										marginTop: '8px',
-										padding: '8px',
-										backgroundColor: '#fff',
-										borderRadius: '4px',
-										fontSize: '12px',
-										overflow: 'auto',
-										maxHeight: '200px',
-									}}
-								>
+								<pre className="nfd-approval-dialog__arguments-pre">
 									{formatToolArguments(tool_arguments)}
 								</pre>
 							</div>
@@ -267,38 +217,17 @@ const ApprovalDialog = ({
 				</div>
 
 				{error && (
-					<div
-						style={{
-							padding: '12px',
-							backgroundColor: '#fcf0f1',
-							border: '1px solid #d63638',
-							borderRadius: '4px',
-							marginBottom: '16px',
-							color: '#d63638',
-							fontSize: '13px',
-						}}
-					>
+					<div className="nfd-approval-dialog__error">
 						{error}
 					</div>
 				)}
 
-				<div style={{ display: 'flex', gap: '12px' }}>
+				<div className="nfd-approval-dialog__actions">
 					<button
 						type="button"
 						onClick={() => handleReject()}
 						disabled={isExecuting}
-						style={{
-							flex: 1,
-							padding: '10px 16px',
-							backgroundColor: '#f0f0f1',
-							border: 'none',
-							borderRadius: '4px',
-							cursor: isExecuting ? 'not-allowed' : 'pointer',
-							fontSize: '14px',
-							fontWeight: UI.FONT_WEIGHT_MEDIUM,
-							color: '#2c3338',
-							opacity: isExecuting ? 0.6 : 1,
-						}}
+						className="nfd-approval-dialog__button nfd-approval-dialog__button--cancel"
 					>
 						{ __( 'Cancel', 'wp-module-ai-chat' ) }
 					</button>
@@ -306,17 +235,7 @@ const ApprovalDialog = ({
 						type="button"
 						onClick={handleApprove}
 						disabled={isExecuting}
-						style={{
-							flex: 1,
-							padding: '10px 16px',
-							backgroundColor: isExecuting ? '#c3c4c7' : '#2271b1',
-							border: 'none',
-							borderRadius: '4px',
-							cursor: isExecuting ? 'not-allowed' : 'pointer',
-							fontSize: '14px',
-							fontWeight: UI.FONT_WEIGHT_MEDIUM,
-							color: '#fff',
-						}}
+						className="nfd-approval-dialog__button nfd-approval-dialog__button--confirm"
 					>
 						{isExecuting ? __( 'Executing...', 'wp-module-ai-chat' ) : __( 'Confirm', 'wp-module-ai-chat' )}
 					</button>

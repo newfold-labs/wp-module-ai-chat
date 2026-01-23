@@ -1,9 +1,12 @@
 /* -------------------------------------------------------------------------- */
+
 /*                         Brand-Specific Styling                            */
+
 /* -------------------------------------------------------------------------- */
 
 /* Base chat container with brand support */
 .nfd-ai-chat-container {
+
 	/* Brand class will be applied to this container */
 	height: 100%;
 	display: flex;
@@ -13,9 +16,12 @@
 /* Bluehost Brand Styling */
 .nfd-brand-bluehost,
 [data-brand="bluehost"] {
+
 	/* Enhanced message bubbles for professional look */
 	.nfd-ai-chat-message {
+
 		&--user {
+
 			.nfd-ai-chat-message__content {
 				background: var(--nfd-ai-chat-color-primary);
 				color: var(--nfd-ai-chat-color-white);
@@ -25,6 +31,7 @@
 		}
 
 		&--assistant {
+
 			.nfd-ai-chat-message__content {
 				color: var(--nfd-ai-chat-color-text);
 			}
@@ -38,6 +45,7 @@
 		box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.04);
 
 		.nfd-ai-chat-input__field {
+
 			&:focus {
 				border-color: var(--nfd-ai-chat-color-primary);
 				box-shadow: 0 0 0 3px var(--nfd-ai-chat-color-primary-light-12);
@@ -45,6 +53,7 @@
 		}
 
 		.nfd-ai-chat-input__send-button {
+
 			&:hover:not(:disabled) {
 				background: var(--nfd-ai-chat-color-primary-hover);
 				transform: translateY(-1px);
@@ -60,6 +69,7 @@
 
 	/* Professional welcome screen */
 	.nfd-ai-chat-welcome {
+
 		.nfd-ai-chat-welcome__title {
 			color: var(--nfd-ai-chat-color-text);
 			font-weight: 600;
@@ -78,6 +88,7 @@
 
 	/* Professional suggestion buttons */
 	.nfd-ai-chat-suggestion {
+
 		&:hover {
 			background: var(--nfd-ai-chat-color-primary-light-8);
 			border-color: var(--nfd-ai-chat-color-primary);
@@ -89,6 +100,7 @@
 
 	/* Enhanced typing indicator */
 	.nfd-ai-chat-typing-indicator {
+
 		.nfd-ai-chat-typing-indicator__dot {
 			background: var(--nfd-ai-chat-color-primary);
 		}
@@ -96,6 +108,7 @@
 
 	/* Professional scrollbar styling */
 	.nfd-ai-chat-messages {
+
 		&::-webkit-scrollbar {
 			width: 8px;
 		}
@@ -132,6 +145,7 @@
 
 	/* Enhanced blockquote styling */
 	.nfd-ai-chat-message__content {
+
 		blockquote {
 			border-left-color: var(--nfd-ai-chat-color-primary);
 			background: var(--nfd-ai-chat-color-primary-light-8);

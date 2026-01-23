@@ -9,7 +9,7 @@
 	transition: transform 0.2s ease, box-shadow 0.2s ease;
 
 	svg {
-		stroke: currentColor;
+		stroke: currentcolor;
 		fill: none;
 	}
 }
@@ -117,22 +117,22 @@
 	transition: all 0.2s ease;
 	font-family: inherit;
 	white-space: nowrap;
-	
+
 	&:hover {
 		background: var(--nfd-ai-chat-color-background);
 		border-color: var(--nfd-ai-chat-color-grey-medium);
 		color: var(--nfd-ai-chat-color-text);
 	}
-	
+
 	&:active {
 		transform: scale(0.98);
 	}
-	
+
 	&:focus {
 		outline: 2px solid var(--nfd-ai-chat-color-primary);
 		outline-offset: 2px;
 	}
-	
+
 	&:disabled {
 		opacity: 0.5;
 		cursor: not-allowed;
