@@ -87,6 +87,26 @@ const getToolDetails = (toolName, args = {}) => {
 };
 
 /**
+ * Safely convert a value to a string for display
+ *
+ * @param {*} value The value to convert
+ * @return {string|null} String representation or null
+ */
+const safeString = (value) => {
+	if (value === null || value === undefined) {
+		return null;
+	}
+	if (typeof value === "string") {
+		return value;
+	}
+	if (typeof value === "number" || typeof value === "boolean") {
+		return String(value);
+	}
+	// Don't render objects - return null instead
+	return null;
+};
+
+/**
  * Parse tool result to get a human-readable summary
  *
  * @param {Object} result   The tool result object
@@ -95,7 +115,7 @@ const getToolDetails = (toolName, args = {}) => {
  */
 const getResultSummary = (result, toolName) => {
 	if (!result || result.isError) {
-		return result?.error || null;
+		return safeString(result?.error);
 	}
 
 	try {
@@ -107,6 +127,11 @@ const getResultSummary = (result, toolName) => {
 			data = JSON.parse(data);
 		}
 
+		// If data is not an object at this point, we can't process it
+		if (!data || typeof data !== "object") {
+			return null;
+		}
+
 		// Handle update results
 		if (toolName?.includes("update")) {
 			if (data.updatedColors && Array.isArray(data.updatedColors)) {
@@ -116,7 +141,7 @@ const getResultSummary = (result, toolName) => {
 				}
 				return `${colors.length} colors updated`;
 			}
-			if (data.message) {
+			if (data.message && typeof data.message === "string") {
 				return data.message;
 			}
 		}
@@ -147,8 +172,8 @@ const getResultSummary = (result, toolName) => {
 					return parts.join(", ");
 				}
 			}
-			// Generic message
-			if (data.message) {
+			// Generic message - only if it's a string
+			if (data.message && typeof data.message === "string") {
 				return data.message;
 			}
 		}
