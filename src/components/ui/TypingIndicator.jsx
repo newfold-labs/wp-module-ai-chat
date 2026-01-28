@@ -201,7 +201,7 @@ const TypingIndicator = ({
 			case "received":
 				return __("Message received", "wp-module-ai-chat");
 			case "generating":
-				return __("Agent is typing", "wp-module-ai-chat");
+				return __("Blu is typing", "wp-module-ai-chat");
 			case "tool_call":
 				return __("Executing actions", "wp-module-ai-chat");
 			case "summarizing":
@@ -211,7 +211,7 @@ const TypingIndicator = ({
 			case "failed":
 				return __("Error occurred", "wp-module-ai-chat");
 			default:
-				return __("Agent is typing", "wp-module-ai-chat");
+				return __("Blu is typing", "wp-module-ai-chat");
 		}
 	};
 

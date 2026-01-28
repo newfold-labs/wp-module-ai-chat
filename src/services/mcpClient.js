@@ -10,6 +10,7 @@
 
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import { convertWpJsonToRestRoute, buildRestApiUrl } from "../utils/restApi.js";
 
 /**
  * Custom error class for MCP operations
@@ -47,11 +48,33 @@ export class WordPressMCPClient {
 	 */
 	getConfig() {
 		const config = (typeof window !== "undefined" && window[this.configKey]) || {};
+		
+		// Get base URL for REST API
+		const baseUrl = config.homeUrl || (typeof window !== "undefined" ? window.location.origin : "");
+		
+		// Convert wp-json URLs to rest_route format for permalink compatibility
+		let restUrl = config.restUrl || "/wp-json/";
+		if (restUrl.includes("/wp-json/")) {
+			restUrl = convertWpJsonToRestRoute(restUrl, baseUrl);
+		} else if (!restUrl.includes("rest_route=")) {
+			// If it's not wp-json and not rest_route, assume it needs conversion
+			restUrl = convertWpJsonToRestRoute("/wp-json/", baseUrl);
+		}
+		
+		// Build MCP URL using rest_route format
+		let mcpUrl = config.mcpUrl;
+		if (!mcpUrl) {
+			// Build MCP endpoint URL using rest_route
+			mcpUrl = buildRestApiUrl("mcp", "mcp-adapter-default-server", baseUrl);
+		} else if (mcpUrl.includes("/wp-json/")) {
+			mcpUrl = convertWpJsonToRestRoute(mcpUrl, baseUrl);
+		}
+		
 		return {
 			nonce: config.nonce || "",
-			restUrl: config.restUrl || "/wp-json/",
-			mcpUrl: config.mcpUrl || `${config.restUrl || "/wp-json/"}mcp/mcp-adapter-default-server`,
-			homeUrl: config.homeUrl || "",
+			restUrl: restUrl,
+			mcpUrl: mcpUrl,
+			homeUrl: baseUrl,
 		};
 	}
 

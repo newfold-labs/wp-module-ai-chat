@@ -6,7 +6,7 @@ import { __ } from "@wordpress/i18n";
 /**
  * Internal dependencies
  */
-import AILogo from "../ui/AILogo";
+import BluBetaHeading from "../ui/BluBetaHeading";
 import SuggestionButton from "../ui/SuggestionButton";
 
 /**
@@ -35,8 +35,8 @@ const WelcomeScreen = ({
 	return (
 		<div className="nfd-ai-chat-welcome">
 			<div className="nfd-ai-chat-welcome__content">
-				<div className="nfd-ai-chat-welcome__avatar">
-					<AILogo width={48} height={48} />
+				<div className="nfd-ai-chat-welcome__heading">
+					<BluBetaHeading />
 				</div>
 				<div className="nfd-ai-chat-welcome__message">
 					<div className="nfd-ai-chat-welcome__title">{title || defaultTitle}</div>

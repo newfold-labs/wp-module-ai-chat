@@ -40,6 +40,7 @@ export { default as WelcomeScreen } from "./components/chat/WelcomeScreen";
 
 // UI Components
 export { default as AILogo } from "./components/ui/AILogo";
+export { default as BluBetaHeading } from "./components/ui/BluBetaHeading";
 export { default as ApprovalDialog } from "./components/ui/ApprovalDialog";
 export { default as InlineApproval } from "./components/ui/InlineApproval";
 export { default as ErrorAlert } from "./components/ui/ErrorAlert";

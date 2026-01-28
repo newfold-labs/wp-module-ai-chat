@@ -14,6 +14,50 @@
 	}
 }
 
+/* BLU BETA Heading */
+.nfd-ai-chat-blu-beta-heading {
+	display: inline-flex;
+	align-items: center;
+	border-radius: 8px;
+	overflow: hidden;
+	font-size: 14px;
+	font-weight: 600;
+	line-height: 1;
+}
+
+.nfd-ai-chat-blu-beta-heading__main {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	background-color: #1a73e8;
+	color: #ffffff;
+	padding: 8px 12px;
+}
+
+.nfd-ai-chat-blu-beta-heading__icon {
+	flex-shrink: 0;
+	color: #ffffff;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.nfd-ai-chat-blu-beta-heading__text {
+	font-weight: 600;
+	letter-spacing: 0.02em;
+	white-space: nowrap;
+	line-height: 1;
+}
+
+.nfd-ai-chat-blu-beta-heading__badge {
+	background-color: #8ab4f8;
+	color: #1a73e8;
+	padding: 8px 10px;
+	font-size: 12px;
+	font-weight: 600;
+	letter-spacing: 0.05em;
+}
+
 /* Error Alert */
 .nfd-ai-chat-error-alert {
 	display: flex;

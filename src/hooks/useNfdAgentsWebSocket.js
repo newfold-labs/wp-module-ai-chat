@@ -7,16 +7,17 @@
 
 import { useState, useEffect, useRef, useCallback } from '@wordpress/element';
 import { __, sprintf } from '@wordpress/i18n';
+import apiFetch from '@wordpress/api-fetch';
 import { NFD_AGENTS_WEBSOCKET } from '../config/constants';
 import { convertToWebSocketUrl } from '../utils/nfdAgents/urlUtils';
 import { isInitialGreeting } from '../utils/nfdAgents/greetingUtils';
 
 /**
  * useNfdAgentsWebSocket Hook
- * 
+ *
  * Manages WebSocket connection to NFD Agents backend with automatic reconnection
  * and message handling.
- * 
+ *
  * @param {Object} options Hook options
  * @param {string} options.configEndpoint REST API endpoint for fetching config
  * @param {string} [options.storageNamespace] Client-only: used for localStorage keys
@@ -25,9 +26,11 @@ import { isInitialGreeting } from '../utils/nfdAgents/greetingUtils';
  * @param {boolean} [options.autoConnect=false] Whether to connect automatically
  * @param {string} [options.consumerType] Consumer type ('help_center' or 'editor_chat').
  *   Used to construct consumer parameter: `wordpress_${consumerType}`. Defaults to 'editor_chat'.
+ * @param {boolean} [options.autoLoadHistory=true] Whether to auto-load chat history from localStorage on mount.
+ *   Set to false to start with empty chat but keep history in storage for later access.
  * @return {Object} Hook return value with connection state and methods
  */
-const useNfdAgentsWebSocket = ({ configEndpoint, storageNamespace = 'default', autoConnect = false, consumerType = 'editor_chat' }) => {
+const useNfdAgentsWebSocket = ({ configEndpoint, storageNamespace = 'default', autoConnect = false, consumerType = 'editor_chat', autoLoadHistory = true }) => {
 	// Storage keys for persisting chat history (client-only, not sent to backend)
 	const STORAGE_KEY = `nfd-ai-chat-${storageNamespace}-history`;
 	const CONVERSATION_STORAGE_KEY = `nfd-ai-chat-${storageNamespace}-conversation-id`;
@@ -60,12 +63,18 @@ const useNfdAgentsWebSocket = ({ configEndpoint, storageNamespace = 'default', a
 		return { messages: [], conversationId: null };
 	};
 
-	// Restore on mount only (use lazy initialization)
+	// Restore on mount only (use lazy initialization) - respects autoLoadHistory option
 	const [messages, setMessages] = useState(() => {
+		if (!autoLoadHistory) {
+			return [];
+		}
 		const restored = restoreFromStorage();
 		return restored.messages;
 	});
 	const [conversationId, setConversationId] = useState(() => {
+		if (!autoLoadHistory) {
+			return null;
+		}
 		const restored = restoreFromStorage();
 		return restored.conversationId;
 	});
@@ -116,39 +125,85 @@ const useNfdAgentsWebSocket = ({ configEndpoint, storageNamespace = 'default', a
 	 */
 	const fetchConfig = useCallback(async () => {
 		try {
-			const params = new URLSearchParams();
-			params.set('storage_namespace', storageNamespace);
-			const url = `${configEndpoint}?${params.toString()}`;
-			const response = await fetch(url);
+			// Extract namespace and route from configEndpoint if it's a full URL
+			// Otherwise, assume it's already in the format 'nfd-agents/chat/v1/config'
+			let path = configEndpoint;
 			
-			if (!response.ok) {
-				if (response.status === 403) {
-					throw new Error(__('Access denied. Please check your capabilities.', 'wp-module-ai-chat'));
+			// If configEndpoint is a full URL, extract the REST API path
+			if (configEndpoint.startsWith('http://') || configEndpoint.startsWith('https://')) {
+				// Extract path from URL - look for rest_route or wp-json
+				const urlObj = new URL(configEndpoint);
+				if (urlObj.searchParams.has('rest_route')) {
+					path = urlObj.searchParams.get('rest_route');
+				} else if (urlObj.pathname.includes('/wp-json/')) {
+					path = urlObj.pathname.replace('/wp-json/', '');
+				} else {
+					// Fallback: use the pathname
+					path = urlObj.pathname.replace(/^\//, '');
 				}
-				if (response.status === 404) {
-					throw new Error(__('Config endpoint not found. Please ensure the backend is deployed.', 'wp-module-ai-chat'));
-				}
-				throw new Error(sprintf(
-					/* translators: %1$s: HTTP status, %2$s: status text */
-					__('Failed to fetch config: %1$s %2$s', 'wp-module-ai-chat'),
-					response.status,
-					response.statusText
-				));
 			}
 			
-			const config = await response.json();
+		// Use apiFetch which handles permalinks and nonce automatically
+		// apiFetch expects path without leading slash for REST routes
+		const cleanPath = path.startsWith('/') ? path.slice(1) : path;
+		
+		// For GET requests, append query parameters to the path
+		// apiFetch with 'data' option sends POST, but this endpoint is GET
+		const pathWithParams = `${cleanPath}?storage_namespace=${encodeURIComponent(storageNamespace)}`;
+		
+		const config = await apiFetch({
+			path: pathWithParams,
+			parse: true,
+		});
+			
 			configRef.current = config;
 			return config;
 		} catch (err) {
 			// Error logging kept for debugging connection issues
 			// eslint-disable-next-line no-console
-			console.error('[AI Chat] Failed to fetch config:', err.message);
+			console.error('[AI Chat] Failed to fetch config:', err);
+			// eslint-disable-next-line no-console
+			console.error('[AI Chat] Error details:', {
+				message: err.message,
+				code: err.code,
+				data: err.data,
+				status: err.data?.status,
+				statusText: err.data?.statusText,
+			});
+			
+			// Handle apiFetch errors
+			let errorMessage = err.message || __('Failed to connect', 'wp-module-ai-chat');
+			
+			// Check for REST API error message in err.data.message or err.message
+			if (err.data?.message) {
+				errorMessage = err.data.message;
+			} else if (err.message && err.message !== 'Could not get a valid response from the server.') {
+				errorMessage = err.message;
+			}
+			
+			if (err.code === 'rest_forbidden' || err.data?.status === 403) {
+				errorMessage = __('Access denied. Please check your capabilities.', 'wp-module-ai-chat');
+			} else if (err.code === 'rest_no_route' || err.data?.status === 404) {
+				errorMessage = __('Config endpoint not found. Please ensure the backend is deployed.', 'wp-module-ai-chat');
+			} else if (err.code === 'gateway_url_not_configured') {
+				errorMessage = __('Gateway URL not configured. Set NFD_AGENTS_CHAT_GATEWAY_URL in wp-config.php.', 'wp-module-ai-chat');
+			} else if (err.code === 'huapi_token_fetch_failed') {
+				errorMessage = __('Failed to fetch authentication token from Hiive. Check your connection or set NFD_AGENTS_CHAT_DEBUG_TOKEN for local development.', 'wp-module-ai-chat');
+			} else if (err.data?.status) {
+				errorMessage = sprintf(
+					/* translators: %1$s: HTTP status, %2$s: status text */
+					__('Failed to fetch config: %1$s %2$s', 'wp-module-ai-chat'),
+					err.data.status,
+					err.data.statusText || errorMessage
+				);
+			}
+			
 			setError(sprintf(
 				/* translators: %s: error message */
 				__('Failed to connect: %s', 'wp-module-ai-chat'),
-				err.message
+				errorMessage
 			));
-			throw err;
+			throw new Error(errorMessage);
 		}
 	}, [configEndpoint, storageNamespace]);
 
@@ -256,9 +311,13 @@ const useNfdAgentsWebSocket = ({ configEndpoint, storageNamespace = 'default', a
 						if (content) {
 							setCurrentResponse((prev) => {
 								const newContent = prev + content;
-								// Check if this looks like an initial greeting BEFORE adding to state
-								if (!hasUserMessageRef.current && isInitialGreeting(newContent)) {
+								// Only filter greetings if we haven't received any user message AND
+								// the content is still very short (likely just the greeting start)
+								// Once content gets longer, it's probably a real response
+								if (!hasUserMessageRef.current && newContent.length < 100 && isInitialGreeting(newContent)) {
 									// Don't show initial greetings - clear any partial we may have accumulated
+									// eslint-disable-next-line no-console
+									console.debug('[AI Chat] Filtering initial greeting:', newContent.substring(0, 50));
 									return '';
 								}
 								// Only set typing if we're actually showing content (not filtered greetings)
@@ -311,12 +370,15 @@ const useNfdAgentsWebSocket = ({ configEndpoint, storageNamespace = 'default', a
 							filteredMessage !== 'No content provided' && 
 							filteredMessage !== 'sales_requested' &&
 							filteredMessage.toLowerCase() !== 'sales_requested') {
-							// Filter out initial greeting messages (before user sends a message)
-							if (!hasUserMessageRef.current && isInitialGreeting(filteredMessage)) {
-								// Don't add the message - but keep typing state as is (real response might still be coming)
-								setCurrentResponse('');
-								return;
-							}
+								// Only filter greetings if message is short and clearly just a greeting
+								// Longer messages are likely real responses, even if they contain greeting words
+								if (!hasUserMessageRef.current && filteredMessage.length < 150 && isInitialGreeting(filteredMessage)) {
+									// Don't add the message - but keep typing state as is (real response might still be coming)
+									// eslint-disable-next-line no-console
+									console.debug('[AI Chat] Filtering greeting message:', filteredMessage.substring(0, 50));
+									setCurrentResponse('');
+									return;
+								}
 							
 							// Finalize any current streaming response first
 							setCurrentResponse((prev) => {
@@ -382,9 +444,11 @@ const useNfdAgentsWebSocket = ({ configEndpoint, storageNamespace = 'default', a
 									return '';
 								}
 								
-								// Filter out initial greeting messages (before user sends a message)
-								if (!hasUserMessageRef.current && isInitialGreeting(prev)) {
+								// Only filter greetings if message is short and clearly just a greeting
+								if (!hasUserMessageRef.current && prev.length < 150 && isInitialGreeting(prev)) {
 									// Clear the response - but keep typing state (real response might still be coming)
+									// eslint-disable-next-line no-console
+									console.debug('[AI Chat] Filtering greeting in complete message:', prev.substring(0, 50));
 									return '';
 								}
 								
@@ -465,9 +529,11 @@ const useNfdAgentsWebSocket = ({ configEndpoint, storageNamespace = 'default', a
 							return;
 						}
 						
-						// Filter out initial greeting messages (before user sends a message)
-						if (!hasUserMessageRef.current && isInitialGreeting(trimmedMessage)) {
+						// Only filter greetings if message is short and clearly just a greeting
+						if (!hasUserMessageRef.current && trimmedMessage.length < 150 && isInitialGreeting(trimmedMessage)) {
 							// Don't add the message - but keep typing state (real response might still be coming)
+							// eslint-disable-next-line no-console
+							console.debug('[AI Chat] Filtering greeting in generic message:', trimmedMessage.substring(0, 50));
 							setCurrentResponse('');
 							return;
 						}
