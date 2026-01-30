@@ -329,8 +329,8 @@ export class CloudflareOpenAIClient {
 			messages,
 			tools: tools.length > 0 ? this.convertMCPToolsToOpenAI(tools) : undefined,
 			tool_choice: tools.length > 0 ? "auto" : undefined,
-			temperature: 0.7,
-			max_tokens: 2000,
+			temperature: 0.1,
+			max_tokens: 4000,
 		};
 
 		try {
