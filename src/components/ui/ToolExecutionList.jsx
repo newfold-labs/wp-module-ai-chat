@@ -18,6 +18,7 @@ import classnames from "classnames";
  */
 const getAbilityDetails = (abilityName) => {
 	const abilityMap = {
+		// Global Styles tools
 		"blu/get-global-styles": {
 			title: __("Reading Site Colors", "wp-module-ai-chat"),
 		},
@@ -47,6 +48,31 @@ const getAbilityDetails = (abilityName) => {
 		},
 		"blu-update-global-palette": {
 			title: __("Updating Site Colors", "wp-module-ai-chat"),
+		},
+		// Block Editor tools
+		"blu/edit-block": {
+			title: __("Editing Block Content", "wp-module-ai-chat"),
+		},
+		"blu-edit-block": {
+			title: __("Editing Block Content", "wp-module-ai-chat"),
+		},
+		"blu/add-section": {
+			title: __("Adding New Section", "wp-module-ai-chat"),
+		},
+		"blu-add-section": {
+			title: __("Adding New Section", "wp-module-ai-chat"),
+		},
+		"blu/delete-block": {
+			title: __("Removing Block", "wp-module-ai-chat"),
+		},
+		"blu-delete-block": {
+			title: __("Removing Block", "wp-module-ai-chat"),
+		},
+		"blu/move-block": {
+			title: __("Moving Block", "wp-module-ai-chat"),
+		},
+		"blu-move-block": {
+			title: __("Moving Block", "wp-module-ai-chat"),
 		},
 	};
 
@@ -144,6 +170,35 @@ const getResultSummary = (result, toolName) => {
 			if (data.message && typeof data.message === "string") {
 				return data.message;
 			}
+		}
+
+		// Handle block editor tool results
+		if (toolName?.includes("edit-block") || toolName?.includes("edit_block")) {
+			if (data.message && typeof data.message === "string") {
+				return data.message;
+			}
+			return data.success ? "Block updated" : "Update failed";
+		}
+
+		if (toolName?.includes("add-section") || toolName?.includes("add_section")) {
+			if (data.message && typeof data.message === "string") {
+				return data.message;
+			}
+			return data.success ? "Section added" : "Add failed";
+		}
+
+		if (toolName?.includes("delete-block") || toolName?.includes("delete_block")) {
+			if (data.message && typeof data.message === "string") {
+				return data.message;
+			}
+			return data.success ? "Block removed" : "Delete failed";
+		}
+
+		if (toolName?.includes("move-block") || toolName?.includes("move_block")) {
+			if (data.message && typeof data.message === "string") {
+				return data.message;
+			}
+			return data.success ? "Block moved" : "Move failed";
 		}
 
 		// Handle get/read results
