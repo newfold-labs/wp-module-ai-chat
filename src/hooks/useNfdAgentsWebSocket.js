@@ -300,6 +300,21 @@ const useNfdAgentsWebSocket = ({ configEndpoint, storageNamespace = 'default', a
 						if (data.session_id) {
 							sessionIdRef.current = data.session_id;
 						}
+					} else if (data.type === 'typing_start') {
+						// Backend signals agent is processing; show typing indicator
+						setIsTyping(true);
+						if (typingTimeoutRef.current) {
+							clearTimeout(typingTimeoutRef.current);
+							typingTimeoutRef.current = null;
+						}
+					} else if (data.type === 'typing_stop') {
+						// Backend signals agent finished; hide typing indicator
+						setIsTyping(false);
+						setCurrentResponse('');
+						if (typingTimeoutRef.current) {
+							clearTimeout(typingTimeoutRef.current);
+							typingTimeoutRef.current = null;
+						}
 					} else if (data.type === 'streaming_chunk' || data.type === 'chunk') {
 						// Ignore streaming chunks if user has stopped generation
 						if (isStoppedRef.current) {
@@ -431,7 +446,7 @@ const useNfdAgentsWebSocket = ({ configEndpoint, storageNamespace = 'default', a
 							}
 						}
 					} else if (data.type === 'message' || data.type === 'complete') {
-						// Complete message - finalize current streaming response
+						// Complete message - finalize current streaming response, or use payload message
 						let hasContent = false;
 						setCurrentResponse((prev) => {
 							if (prev) {
@@ -467,9 +482,36 @@ const useNfdAgentsWebSocket = ({ configEndpoint, storageNamespace = 'default', a
 							}
 							return '';
 						});
+						// If no content from streaming buffer, use message from payload (backend may send full message in type: message)
+						if (!hasContent) {
+							const payloadMessage = data.message || data.response_content?.message;
+							const trimmedPayload = payloadMessage?.trim();
+							if (trimmedPayload &&
+								trimmedPayload !== 'No content provided' &&
+								trimmedPayload !== 'sales_requested' &&
+								trimmedPayload.toLowerCase() !== 'sales_requested') {
+								if (!hasUserMessageRef.current && trimmedPayload.length < 150 && isInitialGreeting(trimmedPayload)) {
+									// eslint-disable-next-line no-console
+									console.debug('[AI Chat] Filtering greeting in message payload:', trimmedPayload.substring(0, 50));
+								} else {
+									setMessages((prev) => [
+										...prev,
+										{
+											id: `msg-${Date.now()}`,
+											role: 'assistant',
+											type: 'assistant',
+											content: trimmedPayload,
+											timestamp: new Date(),
+										},
+									]);
+									hasContent = true;
+								}
+							}
+						}
 						// Only set isTyping(false) if we actually added content
 						if (hasContent) {
 							setIsTyping(false);
+							setCurrentResponse('');
 							// Clear typing timeout since we received content
 							if (typingTimeoutRef.current) {
 								clearTimeout(typingTimeoutRef.current);
