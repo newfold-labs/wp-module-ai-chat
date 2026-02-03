@@ -25,13 +25,14 @@ import ToolExecutionList from "../ui/ToolExecutionList";
  */
 const ChatMessage = ({ message, type = "assistant", executedTools = [], toolResults = [] }) => {
 	const isUser = type === "user";
+	const isNotification = type === "notification";
 
 	const { content, isRichContent } = useMemo(() => {
 		if (!message) {
 			return { content: "", isRichContent: false };
 		}
 
-		if (isUser) {
+		if (isUser || isNotification) {
 			return { content: message, isRichContent: false };
 		}
 
@@ -45,7 +46,7 @@ const ChatMessage = ({ message, type = "assistant", executedTools = [], toolResu
 		}
 
 		return { content: message, isRichContent: false };
-	}, [message, isUser]);
+	}, [message, isUser, isNotification]);
 
 	if (!content && (!executedTools || executedTools.length === 0)) {
 		return null;
