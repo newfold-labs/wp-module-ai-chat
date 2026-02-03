@@ -33,12 +33,17 @@
 
 .nfd-ai-chat-error-alert__content {
 	flex: 1;
+	min-width: 0;
+	overflow: hidden;
 }
 
 .nfd-ai-chat-error-alert__message {
 	font-size: var(--nfd-ai-chat-font-size-base);
 	color: var(--nfd-ai-chat-color-error);
 	line-height: 1.5;
+	overflow-wrap: break-word;
+	word-break: break-word;
+	min-width: 0;
 }
 
 /* Suggestion Button */
