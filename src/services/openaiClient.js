@@ -210,6 +210,7 @@ export class CloudflareOpenAIClient {
 
 	/**
 	 * Convert chat messages to OpenAI format
+	 * Optimizes token usage by truncating assistant content and summarizing tool results
 	 *
 	 * @param {Array} messages Array of chat messages
 	 * @return {Array} OpenAI formatted messages
@@ -234,9 +235,15 @@ export class CloudflareOpenAIClient {
 					continue;
 				}
 
+				// Truncate assistant content when tool calls present to save tokens
+				let content = message.content ?? "";
+				if (hasToolCalls && content.length > 200) {
+					content = content.substring(0, 200) + "...";
+				}
+
 				const assistantMessage = {
 					role: "assistant",
-					content: hasToolCalls ? (message.content ?? null) : (message.content ?? ""),
+					content: hasToolCalls ? (content || null) : content,
 				};
 
 				if (hasToolCalls) {
@@ -255,14 +262,18 @@ export class CloudflareOpenAIClient {
 
 				openaiMessages.push(assistantMessage);
 
-				// Add tool results if present
+				// Add summarized tool results if present (save tokens by only sending status)
 				if (hasToolCalls && message.toolResults && message.toolResults.length > 0) {
 					for (const result of message.toolResults) {
 						const hasMatchingCall = message.toolCalls.some((call) => call.id === result.id);
 						if (hasMatchingCall) {
+							// Summarize result to save tokens - just status, not full content
+							const summary = result.error
+								? `Error: ${result.error.substring(0, 100)}`
+								: "Success";
 							openaiMessages.push({
 								role: "tool",
-								content: result.error || JSON.stringify(result.result),
+								content: summary,
 								tool_call_id: result.id,
 							});
 						}

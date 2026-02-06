@@ -83,6 +83,11 @@ class AIChatController extends WP_REST_Controller {
 							'type'        => 'integer',
 							'required'    => false,
 						),
+						'max_completion_tokens' => array(
+							'description' => 'Maximum completion tokens (GPT-5+)',
+							'type'        => 'integer',
+							'required'    => false,
+						),
 						'temperature' => array(
 							'description' => 'Temperature for response randomness',
 							'type'        => 'number',
@@ -142,6 +147,11 @@ class AIChatController extends WP_REST_Controller {
 		$mode = $request->get_param( 'mode' );
 		if ( null !== $mode ) {
 			$request_data['mode'] = $mode;
+		}
+
+		$max_completion_tokens = $request->get_param( 'max_completion_tokens' );
+		if ( null !== $max_completion_tokens ) {
+			$request_data['max_completion_tokens'] = $max_completion_tokens;
 		}
 
 		$stream = $request->get_param( 'stream' );

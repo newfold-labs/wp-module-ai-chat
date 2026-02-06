@@ -130,6 +130,10 @@ class AiChatProxy {
 			$body['temperature'] = (float) $request_data['temperature'];
 		}
 
+		if ( isset( $request_data['max_completion_tokens'] ) ) {
+			$body['max_completion_tokens'] = (int) $request_data['max_completion_tokens'];
+		}
+
 		$response = wp_remote_post(
 			$config['url'],
 			array(
@@ -199,6 +203,10 @@ class AiChatProxy {
 
 		if ( isset( $request_data['temperature'] ) ) {
 			$body['temperature'] = (float) $request_data['temperature'];
+		}
+
+		if ( isset( $request_data['max_completion_tokens'] ) ) {
+			$body['max_completion_tokens'] = (int) $request_data['max_completion_tokens'];
 		}
 
 		// Set up streaming headers
