@@ -136,11 +136,15 @@ export class CloudflareOpenAIClient {
 				...request,
 				messages: request.messages,
 				stream: true,
+				stream_options: { include_usage: true },
 				mode: request.mode || this.mode,
 			});
 
 			let fullMessage = "";
+			let usage = null;
 			const toolCallsInProgress = {};
+
+			let finishReason = null;
 
 			for await (const chunk of stream) {
 				const delta = chunk.choices[0]?.delta;
@@ -189,17 +193,38 @@ export class CloudflareOpenAIClient {
 				}
 
 				if (chunk.choices[0]?.finish_reason) {
-					// Convert tool calls to final format
-					const finalToolCalls = Object.values(toolCallsInProgress).map((tc) => ({
-						id: tc.id,
-						name: tc.function.name,
-						arguments: tc.function.arguments ? JSON.parse(tc.function.arguments) : {},
-					}));
-
-					// Await onComplete in case it's async
-					await onComplete(fullMessage, finalToolCalls.length > 0 ? finalToolCalls : null);
-					break;
+					finishReason = chunk.choices[0].finish_reason;
 				}
+
+				// Usage arrives in a separate final chunk after finish_reason
+				if (chunk.usage) {
+					usage = chunk.usage;
+					console.log(
+						`[Token Usage] prompt: ${usage.prompt_tokens} | completion: ${usage.completion_tokens} | total: ${usage.total_tokens}`
+					);
+				}
+			}
+
+			// Fallback: SDK stores usage on the stream object after iteration
+			if (!usage && stream.usage) {
+				usage = stream.usage;
+			}
+
+			if (usage) {
+				console.log(
+					`[Token Usage] prompt: ${usage.prompt_tokens} | completion: ${usage.completion_tokens} | total: ${usage.total_tokens}`
+				);
+			}
+
+			// Stream ended — call onComplete with collected data
+			if (finishReason) {
+				const finalToolCalls = Object.values(toolCallsInProgress).map((tc) => ({
+					id: tc.id,
+					name: tc.function.name,
+					arguments: tc.function.arguments ? JSON.parse(tc.function.arguments) : {},
+				}));
+
+				await onComplete(fullMessage, finalToolCalls.length > 0 ? finalToolCalls : null, usage);
 			}
 		} catch (error) {
 			onError(

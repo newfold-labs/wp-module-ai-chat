@@ -154,6 +154,11 @@ class AIChatController extends WP_REST_Controller {
 			$request_data['max_completion_tokens'] = $max_completion_tokens;
 		}
 
+		$stream_options = $request->get_param( 'stream_options' );
+		if ( null !== $stream_options ) {
+			$request_data['stream_options'] = $stream_options;
+		}
+
 		$stream = $request->get_param( 'stream' );
 
 		// Handle streaming vs non-streaming

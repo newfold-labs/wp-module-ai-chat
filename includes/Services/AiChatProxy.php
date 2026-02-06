@@ -134,6 +134,10 @@ class AiChatProxy {
 			$body['max_completion_tokens'] = (int) $request_data['max_completion_tokens'];
 		}
 
+		if ( isset( $request_data['stream_options'] ) ) {
+			$body['stream_options'] = $request_data['stream_options'];
+		}
+
 		$response = wp_remote_post(
 			$config['url'],
 			array(
@@ -207,6 +211,10 @@ class AiChatProxy {
 
 		if ( isset( $request_data['max_completion_tokens'] ) ) {
 			$body['max_completion_tokens'] = (int) $request_data['max_completion_tokens'];
+		}
+
+		if ( isset( $request_data['stream_options'] ) ) {
+			$body['stream_options'] = $request_data['stream_options'];
 		}
 
 		// Set up streaming headers
