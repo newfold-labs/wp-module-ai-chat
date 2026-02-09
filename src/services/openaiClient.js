@@ -149,6 +149,13 @@ export class CloudflareOpenAIClient {
 			for await (const chunk of stream) {
 				const delta = chunk.choices[0]?.delta;
 
+				if (delta?.reasoning) {
+					onChunk({
+						type: "reasoning",
+						content: delta.reasoning,
+					});
+				}
+
 				if (delta?.content) {
 					fullMessage += delta.content;
 					onChunk({

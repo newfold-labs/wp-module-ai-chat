@@ -165,6 +165,7 @@ const TypingIndicator = ({
 	toolProgress = null,
 	executedTools = [],
 	pendingTools = [],
+	reasoningContent = "",
 }) => {
 	const [isExpanded, setIsExpanded] = useState(true);
 	const isExecuting = !!activeToolCall;
@@ -282,6 +283,9 @@ const TypingIndicator = ({
 					<Loader2 className="nfd-ai-chat-typing-indicator__spinner" size={16} />
 					<span className="nfd-ai-chat-typing-indicator__text">{getStatusText()}</span>
 				</div>
+				{reasoningContent && (
+					<div className="nfd-ai-chat-typing-indicator__reasoning">{reasoningContent}</div>
+				)}
 			</div>
 		</div>
 	);
