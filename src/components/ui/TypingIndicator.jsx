@@ -169,10 +169,13 @@ const TypingIndicator = ({
 }) => {
 	const [isExpanded, setIsExpanded] = useState(true);
 	const isExecuting = !!activeToolCall;
+	const isBetweenBatches = !isExecuting && status === "summarizing" && executedTools.length > 0;
 
 	useEffect(() => {
-		setIsExpanded(isExecuting);
-	}, [isExecuting]);
+		if (isExecuting || isBetweenBatches) {
+			setIsExpanded(true);
+		}
+	}, [isExecuting, isBetweenBatches]);
 
 	const getStatusText = () => {
 		switch (status) {
@@ -183,7 +186,7 @@ const TypingIndicator = ({
 			case "tool_call":
 				return __("Executing actions", "wp-module-ai-chat");
 			case "summarizing":
-				return __("Summarizing results", "wp-module-ai-chat");
+				return __("Processing", "wp-module-ai-chat");
 			case "completed":
 				return __("Processing", "wp-module-ai-chat");
 			case "failed":
@@ -195,6 +198,39 @@ const TypingIndicator = ({
 
 	const hasToolActivity = activeToolCall || executedTools.length > 0 || pendingTools.length > 0;
 	const totalTools = executedTools.length + (activeToolCall ? 1 : 0) + pendingTools.length;
+
+	const renderHeaderLabel = () => {
+		if (isExecuting) {
+			return (
+				<>
+					<span>{__("Executing actions", "wp-module-ai-chat")}</span>
+					{activeToolCall.total > 1 && (
+						<span className="nfd-ai-chat-tool-execution__header-count">
+							({activeToolCall.index}/{activeToolCall.total})
+						</span>
+					)}
+				</>
+			);
+		}
+		if (isBetweenBatches) {
+			return (
+				<>
+					<Loader2
+						className="nfd-ai-chat-tool-execution__icon nfd-ai-chat-tool-execution__icon--active"
+						size={12}
+					/>
+					<span>{__("Processing", "wp-module-ai-chat")}</span>
+					<span className="nfd-ai-chat-tool-execution__header-count">({executedTools.length})</span>
+				</>
+			);
+		}
+		return (
+			<>
+				<span>{__("Actions completed", "wp-module-ai-chat")}</span>
+				<span className="nfd-ai-chat-tool-execution__header-count">({totalTools})</span>
+			</>
+		);
+	};
 
 	if (hasToolActivity) {
 		return (
@@ -217,21 +253,7 @@ const TypingIndicator = ({
 								<ChevronRight className="nfd-ai-chat-tool-execution__chevron" size={12} />
 							)}
 
-							{isExecuting ? (
-								<>
-									<span>{__("Executing actions", "wp-module-ai-chat")}</span>
-									{activeToolCall.total > 1 && (
-										<span className="nfd-ai-chat-tool-execution__header-count">
-											({activeToolCall.index}/{activeToolCall.total})
-										</span>
-									)}
-								</>
-							) : (
-								<>
-									<span>{__("Actions completed", "wp-module-ai-chat")}</span>
-									<span className="nfd-ai-chat-tool-execution__header-count">({totalTools})</span>
-								</>
-							)}
+							{renderHeaderLabel()}
 						</button>
 
 						{isExpanded && (
