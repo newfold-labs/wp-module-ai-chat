@@ -29,7 +29,8 @@ export { convertToWebSocketUrl, normalizeUrl, isLocalhost } from "./utils/nfdAge
 export { isInitialGreeting } from "./utils/nfdAgents/greetingUtils";
 
 // Constants
-export { NFD_AGENTS_WEBSOCKET, APPROVAL, UI, INPUT } from "./config/constants";
+export { NFD_AGENTS_WEBSOCKET, getChatHistoryStorageKeys, APPROVAL, UI, INPUT } from "./config/constants";
+export { TYPING_STATUS } from "./constants/typingStatus";
 
 // Chat Components
 export { default as ChatMessage } from "./components/chat/ChatMessage";
@@ -39,7 +40,7 @@ export { default as ChatHeader } from "./components/chat/ChatHeader";
 export { default as WelcomeScreen } from "./components/chat/WelcomeScreen";
 
 // Chat history (storageNamespace must match useNfdAgentsWebSocket for same consumer)
-export { archiveConversation } from "./components/history/archiveConversation";
+export { archiveConversation, removeConversationFromArchive } from "./components/history/archiveConversation";
 export { default as ChatHistoryList } from "./components/history/ChatHistoryList";
 export { default as ChatHistoryDropdown } from "./components/history/ChatHistoryDropdown";
 

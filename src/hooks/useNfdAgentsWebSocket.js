@@ -9,6 +9,7 @@ import { useState, useEffect, useRef, useCallback } from '@wordpress/element';
 import { __, sprintf } from '@wordpress/i18n';
 import apiFetch from '@wordpress/api-fetch';
 import { NFD_AGENTS_WEBSOCKET } from '../config/constants';
+import { getStatusForEventType } from '../constants/typingStatus';
 import { convertToWebSocketUrl } from '../utils/nfdAgents/urlUtils';
 import { isInitialGreeting } from '../utils/nfdAgents/greetingUtils';
 
@@ -50,10 +51,11 @@ const useNfdAgentsWebSocket = ({ configEndpoint, storageNamespace = 'default', a
 				const parsedMessages = JSON.parse(storedMessages);
 				// Only restore if messages exist and are valid
 				if (Array.isArray(parsedMessages) && parsedMessages.length > 0) {
-					// Convert timestamp strings back to Date objects
+					// Convert timestamp strings back to Date objects; don't re-type when restoring
 					const restoredMessages = parsedMessages.map(msg => ({
 						...msg,
 						timestamp: msg.timestamp ? new Date(msg.timestamp) : new Date(),
+						animateTyping: false,
 					}));
 					return {
 						messages: restoredMessages,
@@ -89,6 +91,7 @@ const useNfdAgentsWebSocket = ({ configEndpoint, storageNamespace = 'default', a
 	const [isConnecting, setIsConnecting] = useState(false);
 	const [error, setError] = useState(null);
 	const [isTyping, setIsTyping] = useState(false);
+	const [status, setStatus] = useState(null);
 	const [currentResponse, setCurrentResponse] = useState('');
 	const [approvalRequest, setApprovalRequest] = useState(null);
 	// Connection state enum: 'disconnected' | 'connecting' | 'connected' | 'reconnecting' | 'failed'
@@ -229,11 +232,6 @@ const useNfdAgentsWebSocket = ({ configEndpoint, storageNamespace = 'default', a
 				);
 			}
 			
-			setError(sprintf(
-				/* translators: %s: error message */
-				__('Failed to connect: %s', 'wp-module-ai-chat'),
-				errorMessage
-			));
 			throw new Error(errorMessage);
 		}
 	}, [configEndpoint, storageNamespace]);
@@ -350,6 +348,7 @@ const useNfdAgentsWebSocket = ({ configEndpoint, storageNamespace = 'default', a
 					} else if (data.type === 'typing_start') {
 						// Backend signals agent is processing; show typing indicator
 						setIsTyping(true);
+						setStatus(getStatusForEventType('typing_start'));
 						if (typingTimeoutRef.current) {
 							clearTimeout(typingTimeoutRef.current);
 							typingTimeoutRef.current = null;
@@ -357,6 +356,7 @@ const useNfdAgentsWebSocket = ({ configEndpoint, storageNamespace = 'default', a
 					} else if (data.type === 'typing_stop') {
 						// Backend signals agent finished; hide typing indicator
 						setIsTyping(false);
+						setStatus(null);
 						setCurrentResponse('');
 						if (typingTimeoutRef.current) {
 							clearTimeout(typingTimeoutRef.current);
@@ -389,6 +389,7 @@ const useNfdAgentsWebSocket = ({ configEndpoint, storageNamespace = 'default', a
 								}
 								typingTimeoutRef.current = setTimeout(() => {
 									setIsTyping(false);
+									setStatus(null);
 									typingTimeoutRef.current = null;
 								}, TYPING_TIMEOUT);
 								return newContent;
@@ -453,6 +454,7 @@ const useNfdAgentsWebSocket = ({ configEndpoint, storageNamespace = 'default', a
 											type: 'assistant',
 											content: prev,
 											timestamp: new Date(),
+											animateTyping: true,
 										},
 									]);
 								}
@@ -468,9 +470,11 @@ const useNfdAgentsWebSocket = ({ configEndpoint, storageNamespace = 'default', a
 									type: 'assistant',
 									content: filteredMessage,
 									timestamp: new Date(),
+									animateTyping: true,
 								},
 							]);
 							setIsTyping(false);
+							setStatus(null);
 							setCurrentResponse('');
 							// Clear typing timeout since we received content
 							if (typingTimeoutRef.current) {
@@ -480,7 +484,10 @@ const useNfdAgentsWebSocket = ({ configEndpoint, storageNamespace = 'default', a
 						} else {
 							// No message - might be an empty response; don't set isTyping(false) yet
 						}
+					} else if (data.type === 'tool_call') {
+						setStatus(getStatusForEventType('tool_call'));
 					} else if (data.type === 'tool_result') {
+						setStatus(getStatusForEventType('tool_result'));
 						// Persist conversation_id when present (backend always executes tools; no approval UI)
 						if (data.conversation_id || data.conversationId) {
 							const newConversationId = data.conversation_id || data.conversationId;
@@ -517,14 +524,15 @@ const useNfdAgentsWebSocket = ({ configEndpoint, storageNamespace = 'default', a
 								// Save current streaming response as a message
 								setMessages((prevMessages) => [
 									...prevMessages,
-									{
-										id: `msg-${Date.now()}`,
-										role: 'assistant',
-										type: 'assistant',
-										content: prev,
-										timestamp: new Date(),
-									},
-								]);
+								{
+									id: `msg-${Date.now()}`,
+									role: 'assistant',
+									type: 'assistant',
+									content: prev,
+									timestamp: new Date(),
+									animateTyping: true,
+								},
+							]);
 								hasContent = true;
 							}
 							return '';
@@ -543,14 +551,15 @@ const useNfdAgentsWebSocket = ({ configEndpoint, storageNamespace = 'default', a
 								} else {
 									setMessages((prev) => [
 										...prev,
-										{
-											id: `msg-${Date.now()}`,
-											role: 'assistant',
-											type: 'assistant',
-											content: trimmedPayload,
-											timestamp: new Date(),
-										},
-									]);
+									{
+										id: `msg-${Date.now()}`,
+										role: 'assistant',
+										type: 'assistant',
+										content: trimmedPayload,
+										timestamp: new Date(),
+										animateTyping: true,
+									},
+								]);
 									hasContent = true;
 								}
 							}
@@ -558,6 +567,7 @@ const useNfdAgentsWebSocket = ({ configEndpoint, storageNamespace = 'default', a
 						// Only set isTyping(false) if we actually added content
 						if (hasContent) {
 							setIsTyping(false);
+							setStatus(null);
 							setCurrentResponse('');
 							// Clear typing timeout since we received content
 							if (typingTimeoutRef.current) {
@@ -565,7 +575,10 @@ const useNfdAgentsWebSocket = ({ configEndpoint, storageNamespace = 'default', a
 								typingTimeoutRef.current = null;
 							}
 						}
+					} else if (data.type === 'handoff_accept') {
+						setStatus(getStatusForEventType('handoff_accept'));
 					} else if (data.type === 'handoff_request') {
+						setStatus(getStatusForEventType('handoff_request'));
 						// Handle handoff requests - filter out system messages
 						const messageContent = data.message || data.response_content?.message;
 						const trimmedMessage = messageContent?.trim();
@@ -583,15 +596,17 @@ const useNfdAgentsWebSocket = ({ configEndpoint, storageNamespace = 'default', a
 						// Only add message if it has actual content
 						setMessages((prev) => [
 							...prev,
-							{
-								id: `msg-${Date.now()}`,
-								role: 'assistant',
-								type: 'assistant',
-								content: trimmedMessage,
-								timestamp: new Date(),
-							},
-						]);
+						{
+							id: `msg-${Date.now()}`,
+							role: 'assistant',
+							type: 'assistant',
+							content: trimmedMessage,
+							timestamp: new Date(),
+							animateTyping: true,
+						},
+					]);
 						setIsTyping(false);
+						setStatus(null);
 						setCurrentResponse('');
 						// Clear typing timeout since we received content
 						if (typingTimeoutRef.current) {
@@ -601,6 +616,7 @@ const useNfdAgentsWebSocket = ({ configEndpoint, storageNamespace = 'default', a
 					} else if (data.type === 'error') {
 						setError(data.message || data.error || __('An error occurred', 'wp-module-ai-chat'));
 						setIsTyping(false);
+						setStatus(null);
 						setCurrentResponse('');
 					} else if (data.message || data.response_content?.message) {
 						// Generic message with content (handles handoff_request, etc.)
@@ -635,9 +651,11 @@ const useNfdAgentsWebSocket = ({ configEndpoint, storageNamespace = 'default', a
 								type: 'assistant',
 								content: trimmedMessage,
 								timestamp: new Date(),
+								animateTyping: true,
 							},
 						]);
 						setIsTyping(false);
+						setStatus(null);
 						setCurrentResponse('');
 						// Clear typing timeout since we received content
 						if (typingTimeoutRef.current) {
@@ -655,7 +673,6 @@ const useNfdAgentsWebSocket = ({ configEndpoint, storageNamespace = 'default', a
 				// eslint-disable-next-line no-console
 				console.error('[AI Chat] WebSocket error:', error);
 				connectingRef.current = false; // Reset so new connections can be attempted
-				setError(__('Connection error. Please check server status and configuration.', 'wp-module-ai-chat'));
 				setIsConnecting(false);
 				setConnectionState('failed');
 				try {
@@ -670,6 +687,7 @@ const useNfdAgentsWebSocket = ({ configEndpoint, storageNamespace = 'default', a
 				setIsConnected(false);
 				setIsConnecting(false);
 				setIsTyping(false);
+				setStatus(null);
 				// Clear ref only if this is still the active socket (avoid clearing a newer one)
 				if (wsRef.current === ws) {
 					wsRef.current = null;
@@ -686,7 +704,6 @@ const useNfdAgentsWebSocket = ({ configEndpoint, storageNamespace = 'default', a
 					}, delay);
 				} else if (reconnectAttempts.current >= MAX_RECONNECT_ATTEMPTS) {
 					setConnectionState('failed');
-					setError(__('Failed to reconnect. Please refresh the page.', 'wp-module-ai-chat'));
 					try {
 						sessionStorage.setItem(`nfd-ai-chat-${storageNamespace}-connection-failed`, '1');
 					} catch (e) {
@@ -701,7 +718,6 @@ const useNfdAgentsWebSocket = ({ configEndpoint, storageNamespace = 'default', a
 			connectingRef.current = false;
 			// eslint-disable-next-line no-console
 			console.error('[AI Chat] Error creating WebSocket:', error);
-			setError(error.message || __('Failed to connect. Please check configuration and server status.', 'wp-module-ai-chat'));
 			setIsConnecting(false);
 			setConnectionState('failed');
 			try {
@@ -722,7 +738,7 @@ const useNfdAgentsWebSocket = ({ configEndpoint, storageNamespace = 'default', a
 		connectionStateRef.current = connectionState;
 	}, [connectionState]);
 
-	// When connection transitions to 'failed', if the last message is from the user (sent while connecting), append fallback
+	// When connection transitions to 'failed', always add one assistant fallback message (no red error)
 	useEffect(() => {
 		if (connectionState !== 'failed' || prevConnectionStateRef.current === 'failed') {
 			prevConnectionStateRef.current = connectionState;
@@ -730,17 +746,17 @@ const useNfdAgentsWebSocket = ({ configEndpoint, storageNamespace = 'default', a
 		}
 		prevConnectionStateRef.current = connectionState;
 
+		const defaultFallback = __(
+			'Sorry, we couldn\'t connect. Please try again later or contact support.',
+			'wp-module-ai-chat'
+		);
 		setMessages((prev) => {
-			if (prev.length === 0) return prev;
-			const last = prev[prev.length - 1];
-			if (last.role !== 'user' || last.type !== 'user') return prev;
+			const last = prev.length > 0 ? prev[prev.length - 1] : null;
+			const isLastUser = last && (last.role === 'user' || last.type === 'user');
 			const fallbackContent =
 				typeof getConnectionFailedFallbackMessage === 'function'
-					? getConnectionFailedFallbackMessage(last.content)
-					: __(
-							'Sorry, we couldn\'t connect. Please try again later or contact support.',
-							'wp-module-ai-chat'
-					  );
+					? getConnectionFailedFallbackMessage(isLastUser ? last.content : '')
+					: defaultFallback;
 			return [
 				...prev,
 				{
@@ -755,6 +771,7 @@ const useNfdAgentsWebSocket = ({ configEndpoint, storageNamespace = 'default', a
 		setError(null);
 		setCurrentResponse('');
 		setIsTyping(false);
+		setStatus(null);
 		if (typingTimeoutRef.current) {
 			clearTimeout(typingTimeoutRef.current);
 			typingTimeoutRef.current = null;
@@ -807,10 +824,11 @@ const useNfdAgentsWebSocket = ({ configEndpoint, storageNamespace = 'default', a
 				setError(null);
 				setCurrentResponse('');
 				setIsTyping(false);
+				setStatus(null);
 				return;
 			}
 
-			// Not connected (e.g. still connecting): still show user message in thread, then return
+			// Not connected (e.g. still connecting or not started): show user message and ensure we show "Connecting..."
 			if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
 				if (!convId) {
 					const userMessage = {
@@ -823,7 +841,10 @@ const useNfdAgentsWebSocket = ({ configEndpoint, storageNamespace = 'default', a
 					};
 					setMessages((prev) => [...prev, userMessage]);
 				}
-				setError(__('Not connected. Please wait for connection.', 'wp-module-ai-chat'));
+				// Only trigger connect when disconnected so we don't re-invoke and cause "Connecting..." to flash
+				if (connectionStateRef.current === 'disconnected') {
+					connect();
+				}
 				return;
 			}
 
@@ -850,6 +871,7 @@ const useNfdAgentsWebSocket = ({ configEndpoint, storageNamespace = 'default', a
 				typingTimeoutRef.current = setTimeout(() => {
 					// Hide typing indicator if timeout expires (no response received)
 					setIsTyping(false);
+					setStatus(null);
 					typingTimeoutRef.current = null;
 				}, TYPING_TIMEOUT);
 			}
@@ -910,12 +932,13 @@ const useNfdAgentsWebSocket = ({ configEndpoint, storageNamespace = 'default', a
 			}
 			typingTimeoutRef.current = setTimeout(() => {
 				setIsTyping(false);
+				setStatus(null);
 				typingTimeoutRef.current = null;
 			}, TYPING_TIMEOUT);
 
 			wsRef.current.send(JSON.stringify(payload));
 		},
-		[conversationId]
+		[conversationId, connect]
 	);
 
 	/**
@@ -951,6 +974,7 @@ const useNfdAgentsWebSocket = ({ configEndpoint, storageNamespace = 'default', a
 	/**
 	 * Load a conversation from history (e.g. when user selects a past conversation).
 	 * Sets messages, conversationId, and sessionIdRef so the next connect or send uses the restored session.
+	 * When restoring a sessionId and already connected, reconnects so the backend gets the correct session context.
 	 *
 	 * @param {Array}  msgs             - Array of message objects
 	 * @param {string|null} convId     - Conversation ID from backend
@@ -961,6 +985,7 @@ const useNfdAgentsWebSocket = ({ configEndpoint, storageNamespace = 'default', a
 			const withTimestamps = msgs.map((msg) => ({
 				...msg,
 				timestamp: msg.timestamp ? new Date(msg.timestamp) : new Date(),
+				animateTyping: false, // Don't re-type when loading from history
 			}));
 			setMessages(withTimestamps);
 		}
@@ -968,8 +993,24 @@ const useNfdAgentsWebSocket = ({ configEndpoint, storageNamespace = 'default', a
 		sessionIdRef.current = sessId ?? null;
 		setError(null);
 		setIsTyping(false);
+		setStatus(null);
 		setCurrentResponse('');
-	}, []);
+
+		// Reconnect with restored session_id so the backend has full conversation context
+		if (sessId != null && wsRef.current?.readyState === WebSocket.OPEN) {
+			try {
+				localStorage.setItem(SESSION_STORAGE_KEY, sessId);
+				if (convId != null) {
+					localStorage.setItem(CONVERSATION_STORAGE_KEY, convId);
+				}
+			} catch (err) {
+				// eslint-disable-next-line no-console
+				console.warn('[AI Chat] Failed to persist session for history load:', err);
+			}
+			disconnect();
+			connect();
+		}
+	}, [connect, disconnect]);
 
 	/**
 	 * Get current session ID (e.g. for archiving when starting a new chat).
@@ -987,6 +1028,7 @@ const useNfdAgentsWebSocket = ({ configEndpoint, storageNamespace = 'default', a
 		
 		// Immediately stop typing state to provide instant feedback
 		setIsTyping(false);
+		setStatus(null);
 		setCurrentResponse('');
 		
 		// Clear typing timeout
@@ -1013,6 +1055,7 @@ const useNfdAgentsWebSocket = ({ configEndpoint, storageNamespace = 'default', a
 	 */
 	const clearTyping = useCallback(() => {
 		setIsTyping(false);
+		setStatus(null);
 		// Clear typing timeout if it exists
 		if (typingTimeoutRef.current) {
 			clearTimeout(typingTimeoutRef.current);
@@ -1055,6 +1098,7 @@ const useNfdAgentsWebSocket = ({ configEndpoint, storageNamespace = 'default', a
 			},
 		]);
 		setIsTyping(false);
+		setStatus(null);
 		if (typingTimeoutRef.current) {
 			clearTimeout(typingTimeoutRef.current);
 			typingTimeoutRef.current = null;
@@ -1092,9 +1136,10 @@ const useNfdAgentsWebSocket = ({ configEndpoint, storageNamespace = 'default', a
 		const previousAutoConnect = previousAutoConnectRef.current;
 
 		// On first render, just store the value and return (don't connect yet if false)
+		// Skip auto-connect when already in 'failed' so we don't flash "Connecting..." on every mount
 		if (previousAutoConnect === null) {
 			previousAutoConnectRef.current = autoConnect;
-			if (autoConnect && !connectingRef.current) {
+			if (autoConnect && connectionState !== 'failed' && !connectingRef.current) {
 				if (!wsRef.current || (wsRef.current.readyState !== WebSocket.OPEN && wsRef.current.readyState !== WebSocket.CONNECTING)) {
 					connect();
 				}
@@ -1116,8 +1161,9 @@ const useNfdAgentsWebSocket = ({ configEndpoint, storageNamespace = 'default', a
 		} else {
 			disconnect();
 		}
+		// connectionState read only on first run (when previousAutoConnect === null) to skip connect when already 'failed'
 		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [autoConnect]); // Only depend on autoConnect - connect/disconnect are stable
+	}, [autoConnect, connectionState]);
 
 	/**
 	 * Persist messages to localStorage whenever they change.
@@ -1192,6 +1238,7 @@ const useNfdAgentsWebSocket = ({ configEndpoint, storageNamespace = 'default', a
 			setConversationId(null);
 			setApprovalRequest(null);
 			setIsTyping(false);
+			setStatus(null);
 			setCurrentResponse('');
 			setError(null);
 
@@ -1260,6 +1307,7 @@ const useNfdAgentsWebSocket = ({ configEndpoint, storageNamespace = 'default', a
 		isConnecting,
 		error,
 		isTyping,
+		status,
 		currentResponse,
 		approvalRequest,
 		conversationId,

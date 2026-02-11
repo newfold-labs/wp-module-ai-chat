@@ -3,6 +3,7 @@
  */
 import { useState, useEffect } from "@wordpress/element";
 import { __ } from "@wordpress/i18n";
+import { TYPING_STATUS } from "../../constants/typingStatus";
 
 /**
  * External dependencies
@@ -196,23 +197,22 @@ const TypingIndicator = ({
 		setIsExpanded(isExecuting);
 	}, [isExecuting]);
 
+	/** Status key → user-facing label (single place for copy; i18n-ready) */
+	const STATUS_LABELS = {
+		[TYPING_STATUS.PROCESSING]: __("Processing…", "wp-module-ai-chat"),
+		[TYPING_STATUS.CONNECTING]: __("Getting your site ready…", "wp-module-ai-chat"),
+		[TYPING_STATUS.WS_CONNECTING]: __("Connecting…", "wp-module-ai-chat"),
+		[TYPING_STATUS.TOOL_CALL]: __("Looking this up…", "wp-module-ai-chat"),
+		[TYPING_STATUS.WORKING]: __("Almost there…", "wp-module-ai-chat"),
+		[TYPING_STATUS.RECEIVED]: __("Message received", "wp-module-ai-chat"),
+		[TYPING_STATUS.GENERATING]: __("Thinking…", "wp-module-ai-chat"),
+		[TYPING_STATUS.SUMMARIZING]: __("Summarizing results", "wp-module-ai-chat"),
+		[TYPING_STATUS.COMPLETED]: __("Processing", "wp-module-ai-chat"),
+		[TYPING_STATUS.FAILED]: __("Error occurred", "wp-module-ai-chat"),
+	};
+
 	const getStatusText = () => {
-		switch (status) {
-			case "received":
-				return __("Message received", "wp-module-ai-chat");
-			case "generating":
-				return __("Blu is typing", "wp-module-ai-chat");
-			case "tool_call":
-				return __("Executing actions", "wp-module-ai-chat");
-			case "summarizing":
-				return __("Summarizing results", "wp-module-ai-chat");
-			case "completed":
-				return __("Processing", "wp-module-ai-chat");
-			case "failed":
-				return __("Error occurred", "wp-module-ai-chat");
-			default:
-				return __("Blu is typing", "wp-module-ai-chat");
-		}
+		return STATUS_LABELS[status] ?? __("Thinking…", "wp-module-ai-chat");
 	};
 
 	const hasToolActivity = activeToolCall || executedTools.length > 0 || pendingTools.length > 0;

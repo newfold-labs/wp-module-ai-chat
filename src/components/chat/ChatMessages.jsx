@@ -1,7 +1,8 @@
 /**
  * WordPress dependencies
  */
-import { useEffect, useRef } from "@wordpress/element";
+import { useEffect, useRef, useCallback, useState } from "@wordpress/element";
+import { __ } from "@wordpress/i18n";
 
 /**
  * Internal dependencies
@@ -14,7 +15,7 @@ import ChatMessage from "./ChatMessage";
  * ChatMessages Component
  *
  * Scrollable container for all chat messages.
- * Auto-scrolls to bottom when new messages arrive.
+ * Auto-scrolls to bottom when new messages arrive or when the last message content grows (e.g. typing animation).
  *
  * @param {Object}  props                - The component props.
  * @param {Array}   props.messages       - The messages to display.
@@ -32,6 +33,8 @@ import ChatMessage from "./ChatMessage";
  * @param {Function} [props.onSendSystemMessage] - Function to send message to agent (hidden from UI).
  * @param {string} [props.conversationId] - Conversation ID for message correlation.
  * @param {Function} [props.onClearTyping] - Callback to clear typing indicator.
+ * @param {Function} [props.onRetry]      - Callback when user clicks Retry (e.g. after connection failed).
+ * @param {boolean} [props.connectionFailed] - Whether connection has failed (show Retry without red error).
  * @param {string} [props.brandId]       - Brand identifier for styling.
  * @return {JSX.Element} The ChatMessages component.
  */
@@ -51,39 +54,74 @@ const ChatMessages = ({
 	onSendSystemMessage,
 	conversationId,
 	onClearTyping,
+	onRetry,
+	connectionFailed = false,
 	brandId,
 }) => {
-	const messagesEndRef = useRef(null);
+	const scrollContainerRef = useRef(null);
+	const [scrollTrigger, setScrollTrigger] = useState(0);
+
+	const scrollToBottom = useCallback(() => {
+		const el = scrollContainerRef.current;
+		if (!el) return;
+		el.scrollTo({
+			top: el.scrollHeight - el.clientHeight,
+			behavior: "smooth",
+		});
+	}, []);
 
 	useEffect(() => {
-		messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-	}, [messages, isLoading, toolProgress]);
+		scrollToBottom();
+	}, [messages, isLoading, toolProgress, scrollTrigger, scrollToBottom]);
+
+	const onContentGrow = useCallback(() => {
+		setScrollTrigger((t) => t + 1);
+	}, []);
 
 	const hasActiveToolExecution =
 		activeToolCall || executedTools.length > 0 || pendingTools.length > 0;
 
 	return (
-		<div className="nfd-ai-chat-messages">
+		<div ref={scrollContainerRef} className="nfd-ai-chat-messages">
 			{messages.length > 0 &&
-				messages.map((msg, index) => (
-					<ChatMessage
-						key={msg.id || index}
-						message={msg.content}
-						type={msg.type}
-						executedTools={msg.executedTools}
-						approvalRequest={msg.approvalRequest}
-						onApprove={onApprove}
-						onReject={onReject}
-						onExecuteTool={onExecuteTool}
-						onSendMessage={onSendMessage}
-						onSendSystemMessage={onSendSystemMessage}
-						conversationId={conversationId}
-						onClearTyping={onClearTyping}
-						brandId={brandId}
-						toolResults={msg.toolResults}
-					/>
-				))}
+				messages.map((msg, index) => {
+					// Animate typing only for the last assistant message that was received live (not loaded from history/restore)
+					const isLastAssistant =
+						index === messages.length - 1 &&
+						(msg.type === "assistant" || msg.role === "assistant");
+					return (
+						<ChatMessage
+							key={msg.id || index}
+							message={msg.content}
+							type={msg.type}
+							animateTyping={isLastAssistant && msg.animateTyping === true}
+							onContentGrow={isLastAssistant ? onContentGrow : undefined}
+							executedTools={msg.executedTools}
+							approvalRequest={msg.approvalRequest}
+							onApprove={onApprove}
+							onReject={onReject}
+							onExecuteTool={onExecuteTool}
+							onSendMessage={onSendMessage}
+							onSendSystemMessage={onSendSystemMessage}
+							conversationId={conversationId}
+							onClearTyping={onClearTyping}
+							brandId={brandId}
+							toolResults={msg.toolResults}
+						/>
+					);
+				})}
 			{error && <ErrorAlert message={error} />}
+			{onRetry && (error || connectionFailed) && (
+				<p className="nfd-ai-chat-messages__retry">
+					<button
+						type="button"
+						className="nfd-ai-chat-messages__retry-button"
+						onClick={onRetry}
+					>
+						{__("Retry", "wp-module-ai-chat")}
+					</button>
+				</p>
+			)}
 			{isLoading && (
 				<TypingIndicator
 					status={status}
@@ -93,7 +131,6 @@ const ChatMessages = ({
 					pendingTools={pendingTools}
 				/>
 			)}
-			<div ref={messagesEndRef} />
 		</div>
 	);
 };
