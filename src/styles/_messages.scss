@@ -6,6 +6,7 @@
 	flex-direction: column;
 	overflow-y: auto;
 	overflow-x: hidden;
+	scroll-behavior: smooth;
 	padding: var(--nfd-ai-chat-spacing-lg) var(--nfd-ai-chat-spacing-lg);
 	gap: var(--nfd-ai-chat-spacing-md);
 	min-height: 0;
@@ -13,6 +14,25 @@
 	background: var(--nfd-ai-chat-color-white);
 
 	@include mixins.custom-scrollbar;
+
+	&__retry {
+		margin: 0 0 var(--nfd-ai-chat-spacing-sm);
+	}
+
+	&__retry-button {
+		background: none;
+		border: none;
+		padding: 0;
+		font-size: inherit;
+		font-family: inherit;
+		color: var(--nfd-ai-chat-color-primary);
+		cursor: pointer;
+		text-decoration: underline;
+
+		&:hover {
+			text-decoration: none;
+		}
+	}
 }
 
 .nfd-ai-chat-message {
@@ -172,6 +192,7 @@
 			border-top: 1px solid var(--nfd-ai-chat-color-grey-light);
 			margin: 2rem 0;
 		}
+
 	}
 
 	&--assistant {

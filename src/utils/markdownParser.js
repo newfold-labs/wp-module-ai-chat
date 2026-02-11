@@ -155,10 +155,62 @@ export function parseMarkdown(text) {
 	// Clean up multiple consecutive <br> tags
 	html = html.replace(/(<br\s*\/?>){2,}/g, "<br>");
 
+	// Linkify any remaining bare URLs in text content (e.g. inside list items)
+	html = linkifyBareUrlsInHtml(html);
+
 	return html;
+}
+
+/**
+ * Linkify bare http(s) URLs that appear in HTML text nodes (between > and <).
+ * Avoids touching URLs inside existing href attributes.
+ *
+ * @param {string} html - HTML string (e.g. from parseMarkdown)
+ * @return {string} HTML with bare URLs in text wrapped in <a> tags
+ */
+function linkifyBareUrlsInHtml(html) {
+	if (!html || typeof html !== "string") {
+		return "";
+	}
+	return html.replace(/>([^<]*)</g, (match, textNode) => ">" + linkifyUrls(textNode) + "<");
+}
+
+/**
+ * Replace bare http(s) URLs in plain text with clickable anchor tags.
+ * Use only on plain text (no existing HTML) so we don't double-wrap or break attributes.
+ *
+ * @param {string} text - Plain text that may contain URLs
+ * @return {string} Text with URLs wrapped in <a href="..." target="_blank" rel="noopener noreferrer">...</a>
+ */
+export function linkifyUrls(text) {
+	if (!text || typeof text !== "string") {
+		return "";
+	}
+	// Match http(s) URLs, including when broken across lines (optional \n + continuation)
+	const urlPattern = /(https?:\/\/[^\s<>"]*(?:\n[^\s<>"]*)*)/g;
+	return text.replace(urlPattern, (fullMatch) => {
+		// Normalize: remove internal whitespace/newlines so href is valid
+		const normalized = fullMatch.replace(/\s+/g, "").trim();
+		let trimmed = normalized.replace(/[.,;:!?)\]]+$/, "");
+		// Strip trailing /Word when Word looks like start of next sentence (e.g. "...testing/If you"); keep the word for output
+		const sentenceStarterMatch = trimmed.match(/\/(If|It|To|We|So|Or|In|On|At|By|Do|Be|As|An|The|You)$/i);
+		const wordAfterLink = sentenceStarterMatch ? sentenceStarterMatch[1] : "";
+		if (wordAfterLink) {
+			trimmed = trimmed.replace(/\/(If|It|To|We|So|Or|In|On|At|By|Do|Be|As|An|The|You)$/i, "");
+		}
+		if (!trimmed) return fullMatch;
+		const safeHref = trimmed.replace(/"/g, "&quot;");
+		const safeText = trimmed
+			.replace(/&/g, "&amp;")
+			.replace(/</g, "&lt;")
+			.replace(/>/g, "&gt;")
+			.replace(/"/g, "&quot;");
+		return `<a href="${safeHref}" target="_blank" rel="noopener noreferrer">${safeText}</a>${wordAfterLink ? " " + wordAfterLink : ""}`;
+	});
 }
 
 export default {
 	containsMarkdown,
 	parseMarkdown,
+	linkifyUrls,
 };

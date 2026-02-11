@@ -70,7 +70,7 @@ const ChatHistoryDropdown = ({
 	const updatePosition = useCallback(() => {
 		if (!triggerRef.current) return;
 		const rect = triggerRef.current.getBoundingClientRect();
-		const panelHeight = 280;
+		const panelHeight = 240;
 		const spaceBelow = window.innerHeight - rect.bottom;
 		const openUp = spaceBelow < panelHeight && rect.top > spaceBelow;
 		setPosition({

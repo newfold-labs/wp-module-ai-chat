@@ -6,10 +6,30 @@
  * Use storageNamespace that matches useNfdAgentsWebSocket for the same consumer.
  */
 
-import { useState, useEffect } from '@wordpress/element';
+import { useState, useEffect, useCallback } from '@wordpress/element';
 import { __ } from '@wordpress/i18n';
-import { History } from 'lucide-react';
+import { History, Trash2 } from 'lucide-react';
 import { getChatHistoryStorageKeys } from '../../config/constants';
+
+/**
+ * Human-readable relative time (e.g. 2m, 2h, 2d).
+ *
+ * @param {Date|string} dateOrString - Date or ISO string
+ * @return {string}
+ */
+const getRelativeTime = (dateOrString) => {
+	const date = dateOrString instanceof Date ? dateOrString : new Date(dateOrString);
+	const now = Date.now();
+	const diffMs = now - date.getTime();
+	const diffM = Math.floor(diffMs / 60000);
+	const diffH = Math.floor(diffMs / 3600000);
+	const diffD = Math.floor(diffMs / 86400000);
+	if (diffM < 1) return __('Just now', 'wp-module-ai-chat');
+	if (diffM < 60) return `${diffM}m`;
+	if (diffH < 24) return `${diffH}h`;
+	if (diffD < 7) return `${diffD}d`;
+	return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+};
 
 const DEFAULT_MAX_HISTORY_ITEMS = 3;
 
@@ -127,6 +147,23 @@ const extractConversations = (messages, maxHistoryItems) => {
 };
 
 /**
+ * Get the latest message timestamp for relative time (legacy conversations without archivedAt).
+ *
+ * @param {Object} conversation - Conversation with messages
+ * @return {Date|null}
+ */
+const getLatestMessageTime = (conversation) => {
+	const messages = conversation.messages || conversation;
+	if (!Array.isArray(messages) || messages.length === 0) return null;
+	let latest = 0;
+	messages.forEach((msg) => {
+		const t = msg.timestamp ? new Date(msg.timestamp).getTime() : 0;
+		if (t > latest) latest = t;
+	});
+	return latest ? new Date(latest) : null;
+};
+
+/**
  * Get the title for a conversation (first user message)
  *
  * @param {Object} conversation - Conversation with messages
@@ -189,10 +226,14 @@ const ChatHistoryList = ({
 										: new Date(),
 								})
 							);
+							const archivedAt = entry.archivedAt
+								? new Date(entry.archivedAt)
+								: null;
 							return {
 								sessionId: entry.sessionId ?? null,
 								conversationId: entry.conversationId ?? null,
 								messages,
+								archivedAt,
 							};
 						})
 						.filter(hasMeaningfulUserMessage);
@@ -227,6 +268,65 @@ const ChatHistoryList = ({
 		}
 	}, [storageNamespace, refreshTrigger, maxHistoryItems]);
 
+	const handleHistoryClick = useCallback(
+		(conversation) => {
+			if (disabled) {
+				return;
+			}
+			try {
+				const messages = conversation.messages || conversation;
+				const messagesToStore = messages.map((msg) => ({
+					...msg,
+					timestamp:
+						msg.timestamp instanceof Date
+							? msg.timestamp.toISOString()
+							: msg.timestamp,
+				}));
+
+				localStorage.setItem(keys.history, JSON.stringify(messagesToStore));
+
+				if (conversation.sessionId) {
+					localStorage.setItem(keys.sessionId, conversation.sessionId);
+				}
+				if (conversation.conversationId) {
+					localStorage.setItem(
+						keys.conversationId,
+						conversation.conversationId
+					);
+				}
+
+				if (onSelectConversation) {
+					onSelectConversation(conversation);
+				}
+			} catch (err) {
+				// eslint-disable-next-line no-console
+				console.warn('[Chat History] Failed to restore conversation:', err);
+			}
+		},
+		[disabled, keys, onSelectConversation]
+	);
+
+	const handleDelete = useCallback(
+		(e, index) => {
+			e.stopPropagation();
+			e.preventDefault();
+			if (disabled) return;
+			try {
+				const rawArchive = localStorage.getItem(keys.archive);
+				if (rawArchive) {
+					const archive = JSON.parse(rawArchive);
+					const filtered = archive.filter((_, i) => i !== index);
+					localStorage.setItem(keys.archive, JSON.stringify(filtered));
+				}
+				setConversations((prev) => prev.filter((_, i) => i !== index));
+			} catch (err) {
+				// eslint-disable-next-line no-console
+				console.warn('[Chat History] Failed to delete conversation:', err);
+			}
+		},
+		[disabled, keys]
+	);
+
 	if (conversations.length === 0) {
 		if (emptyMessage) {
 			return (
@@ -236,48 +336,17 @@ const ChatHistoryList = ({
 			);
 		}
 		return null;
-	};
-
-	const handleHistoryClick = (conversation) => {
-		if (disabled) {
-			return;
-		}
-		try {
-			const messages = conversation.messages || conversation;
-			const messagesToStore = messages.map((msg) => ({
-				...msg,
-				timestamp:
-					msg.timestamp instanceof Date
-						? msg.timestamp.toISOString()
-						: msg.timestamp,
-			}));
-
-			localStorage.setItem(keys.history, JSON.stringify(messagesToStore));
-
-			if (conversation.sessionId) {
-				localStorage.setItem(keys.sessionId, conversation.sessionId);
-			}
-			if (conversation.conversationId) {
-				localStorage.setItem(
-					keys.conversationId,
-					conversation.conversationId
-				);
-			}
-
-			if (onSelectConversation) {
-				onSelectConversation(conversation);
-			}
-		} catch (err) {
-			// eslint-disable-next-line no-console
-			console.warn('[Chat History] Failed to restore conversation:', err);
-		}
-	};
+	}
 
 	return (
 		<div className="nfd-ai-chat-history-list">
 			{conversations.map((conversation, index) => {
 				const title = getConversationTitle(conversation);
 				const key = conversation.sessionId || `legacy-${index}`;
+				const timeDate =
+					conversation.archivedAt ||
+					(getLatestMessageTime(conversation) || null);
+				const timeLabel = timeDate ? getRelativeTime(timeDate) : null;
 				return (
 					<div
 						key={key}
@@ -295,7 +364,30 @@ const ChatHistoryList = ({
 						}}
 					>
 						<History width={14} height={14} aria-hidden />
-						<span>{title}</span>
+						<div className="nfd-ai-chat-history-item__content">
+							<span className="nfd-ai-chat-history-item__title">{title}</span>
+							<div className="nfd-ai-chat-history-item__meta">
+								{timeLabel && (
+									<span className="nfd-ai-chat-history-item__time">
+										{timeLabel}
+									</span>
+								)}
+								<button
+									type="button"
+									className="nfd-ai-chat-history-item__delete"
+									onClick={(e) => handleDelete(e, index)}
+									aria-label={__('Delete conversation', 'wp-module-ai-chat')}
+									title={__('Delete', 'wp-module-ai-chat')}
+								>
+									<Trash2
+										width={14}
+										height={14}
+										className="nfd-ai-chat-history-item__delete-icon"
+										aria-hidden
+									/>
+								</button>
+							</div>
+						</div>
 					</div>
 				);
 			})}
