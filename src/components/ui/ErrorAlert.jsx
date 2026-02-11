@@ -14,14 +14,14 @@ import { CircleX } from "lucide-react";
  * @param {string} props.className - Additional CSS classes (optional).
  * @return {JSX.Element} The ErrorAlert component.
  */
-const ErrorAlert = ( { message, className = "" } ) => {
+const ErrorAlert = ({ message, className = "" }) => {
 	return (
-		<div className={ `nfd-ai-chat-error-alert ${ className }` }>
+		<div className={`nfd-ai-chat-error-alert ${className}`}>
 			<div className="nfd-ai-chat-error-alert__icon">
-				<CircleX width={ 16 } height={ 16 } />
+				<CircleX width={16} height={16} />
 			</div>
 			<div className="nfd-ai-chat-error-alert__content">
-				<div className="nfd-ai-chat-error-alert__message">{ message }</div>
+				<div className="nfd-ai-chat-error-alert__message">{message}</div>
 			</div>
 		</div>
 	);

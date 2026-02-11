@@ -14,15 +14,15 @@ import { Sparkles } from "lucide-react";
  * @param {number} props.height - The height of the logo (default: 24).
  * @return {JSX.Element} The AILogo component.
  */
-const AILogo = ( { width = 24, height = 24 } ) => (
+const AILogo = ({ width = 24, height = 24 }) => (
 	<div
 		className="nfd-ai-chat-avatar"
-		style={ {
+		style={{
 			width,
 			height,
-		} }
+		}}
 	>
-		<Sparkles width={ width * 0.625 } height={ height * 0.625 } />
+		<Sparkles width={width * 0.625} height={height * 0.625} />
 	</div>
 );
 

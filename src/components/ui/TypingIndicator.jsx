@@ -43,14 +43,23 @@ const getAbilityDetails = (abilityName) => {
 		},
 	};
 
-	return (
-		abilityMap[abilityName] || {
-			title:
-				abilityName?.replace(/[-_\/]/g, " ").replace(/\b\w/g, (l) => l.toUpperCase()) ||
-				__("Executing", "wp-module-ai-chat"),
-			description: __("Running action", "wp-module-ai-chat"),
-		}
-	);
+	if (abilityMap[abilityName]) {
+		return abilityMap[abilityName];
+	}
+
+	if (abilityName === "preparing-changes") {
+		return {
+			title: __("Preparing changes", "wp-module-ai-chat"),
+			description: __("Building block markup", "wp-module-ai-chat"),
+		};
+	}
+
+	return {
+		title:
+			abilityName?.replace(/[-_\/]/g, " ").replace(/\b\w/g, (l) => l.toUpperCase()) ||
+			__("Executing", "wp-module-ai-chat"),
+		description: __("Running action", "wp-module-ai-chat"),
+	};
 };
 
 /**
@@ -151,12 +160,13 @@ const ToolExecutionItem = ({ tool, isActive, progress, isComplete, isError }) =>
  *
  * Displays an animated typing indicator with spinner and real-time progress.
  *
- * @param {Object} props                - The component props.
- * @param {string} props.status         - The current status.
- * @param {Object} props.activeToolCall - The currently executing tool call.
- * @param {string} props.toolProgress   - Real-time progress message.
- * @param {Array}  props.executedTools  - List of already executed tools.
- * @param {Array}  props.pendingTools   - List of pending tools to execute.
+ * @param {Object} props                  - The component props.
+ * @param {string} props.status           - The current status.
+ * @param {Object} props.activeToolCall   - The currently executing tool call.
+ * @param {string} props.toolProgress     - Real-time progress message.
+ * @param {Array}  props.executedTools    - List of already executed tools.
+ * @param {Array}  props.pendingTools     - List of pending tools to execute.
+ * @param {string} props.reasoningContent - The reasoning content.
  * @return {JSX.Element} The TypingIndicator component.
  */
 const TypingIndicator = ({
@@ -277,6 +287,17 @@ const TypingIndicator = ({
 										isComplete={false}
 										isError={false}
 										progress={toolProgress}
+									/>
+								)}
+
+								{isBetweenBatches && (
+									<ToolExecutionItem
+										key="preparing"
+										tool={{ name: "preparing-changes" }}
+										isActive={true}
+										isComplete={false}
+										isError={false}
+										progress={null}
 									/>
 								)}
 

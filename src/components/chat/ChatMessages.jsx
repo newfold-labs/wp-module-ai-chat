@@ -16,16 +16,16 @@ import ChatMessage from "./ChatMessage";
  * Scrollable container for all chat messages.
  * Auto-scrolls to bottom when new messages arrive.
  *
- * @param {Object}  props                   - The component props.
- * @param {Array}   props.messages          - The messages to display.
- * @param {boolean} props.isLoading         - Whether the AI is generating a response.
- * @param {string}  props.error             - Error message to display (optional).
- * @param {string}  props.status            - The current status.
- * @param {Object}  props.activeToolCall    - The currently executing tool call (optional).
- * @param {string}  props.toolProgress      - Real-time progress message (optional).
- * @param {Array}   props.executedTools     - List of completed tool executions (optional).
- * @param {Array}   props.pendingTools      - List of pending tools to execute (optional).
- * @param {string}  props.reasoningContent  - AI reasoning/thinking content (optional).
+ * @param {Object}  props                  - The component props.
+ * @param {Array}   props.messages         - The messages to display.
+ * @param {boolean} props.isLoading        - Whether the AI is generating a response.
+ * @param {string}  props.error            - Error message to display (optional).
+ * @param {string}  props.status           - The current status.
+ * @param {Object}  props.activeToolCall   - The currently executing tool call (optional).
+ * @param {string}  props.toolProgress     - Real-time progress message (optional).
+ * @param {Array}   props.executedTools    - List of completed tool executions (optional).
+ * @param {Array}   props.pendingTools     - List of pending tools to execute (optional).
+ * @param {string}  props.reasoningContent - AI reasoning/thinking content (optional).
  * @return {JSX.Element} The ChatMessages component.
  */
 const ChatMessages = ({
@@ -56,7 +56,7 @@ const ChatMessages = ({
 						key={msg.id || index}
 						message={msg.content}
 						type={msg.type}
-						executedTools={msg.executedTools}
+						executedTools={msg.isExecutingTools ? [] : msg.executedTools}
 						toolResults={msg.toolResults}
 					/>
 				))}

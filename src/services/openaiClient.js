@@ -275,7 +275,7 @@ export class CloudflareOpenAIClient {
 
 				const assistantMessage = {
 					role: "assistant",
-					content: hasToolCalls ? (content || null) : content,
+					content: hasToolCalls ? content || null : content,
 				};
 
 				if (hasToolCalls) {
@@ -300,9 +300,7 @@ export class CloudflareOpenAIClient {
 						const hasMatchingCall = message.toolCalls.some((call) => call.id === result.id);
 						if (hasMatchingCall) {
 							// Summarize result to save tokens - just status, not full content
-							const summary = result.error
-								? `Error: ${result.error.substring(0, 100)}`
-								: "Success";
+							const summary = result.error ? `Error: ${result.error.substring(0, 100)}` : "Success";
 							openaiMessages.push({
 								role: "tool",
 								content: summary,
