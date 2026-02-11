@@ -9,7 +9,6 @@ import { useMemo } from "@wordpress/element";
 import { containsHtml, sanitizeHtml } from "../../utils/sanitizeHtml";
 import { containsMarkdown, parseMarkdown } from "../../utils/markdownParser";
 import ToolExecutionList from "../ui/ToolExecutionList";
-import InlineApproval from "../ui/InlineApproval";
 
 /**
  * ChatMessage Component
@@ -19,11 +18,8 @@ import InlineApproval from "../ui/InlineApproval";
  *
  * @param {Object} props                    - The component props.
  * @param {string} props.message            - The message content to display.
- * @param {string} [props.type="assistant"] - The message type ("user", "assistant", or "approval_request").
+ * @param {string} [props.type="assistant"] - The message type ("user" or "assistant").
  * @param {Array}  [props.executedTools=[]] - List of executed tools to show inline.
- * @param {Object} [props.approvalRequest]  - Approval request data for approval_request type.
- * @param {Function} [props.onApprove]      - Callback when user approves.
- * @param {Function} [props.onReject]      - Callback when user rejects.
  * @param {Function} [props.onExecuteTool] - Function to execute tool via MCP.
  * @param {Function} [props.onSendMessage] - Function to send message back to agent (shows in UI).
  * @param {Function} [props.onSendSystemMessage] - Function to send message to agent (hidden from UI).
@@ -37,9 +33,6 @@ const ChatMessage = ({
 	message,
 	type = "assistant",
 	executedTools = [],
-	approvalRequest,
-	onApprove,
-	onReject,
 	onExecuteTool,
 	onSendMessage,
 	onSendSystemMessage,
@@ -48,31 +41,9 @@ const ChatMessage = ({
 	brandId,
 	toolResults = [],
 }) => {
-	// If this is an approval request message, render inline approval
-	if (type === 'approval_request') {
-		if (approvalRequest) {
-			// Render approval component
-			return (
-				<div className={`nfd-ai-chat-message nfd-ai-chat-message--approval`}>
-					<InlineApproval
-						approvalRequest={approvalRequest}
-						onApprove={onApprove}
-						onReject={onReject}
-						onExecuteTool={onExecuteTool}
-						onSendMessage={onSendMessage}
-						onSendSystemMessage={onSendSystemMessage}
-						conversationId={conversationId}
-						onClearTyping={onClearTyping}
-						brandId={brandId}
-					/>
-				</div>
-			);
-		}
-		// Approval was cancelled/rejected, render as regular message
-		// Fall through to regular message rendering below
-		// The message content should already be updated to show cancellation
-	}
-	const isUser = type === "user";
+	// Treat approval_request as assistant so the thread still displays
+	const displayType = type === "approval_request" ? "assistant" : type;
+	const isUser = displayType === "user";
 
 	const { content, isRichContent } = useMemo(() => {
 		if (!message) {
@@ -101,7 +72,7 @@ const ChatMessage = ({
 	}
 
 	return (
-		<div className={`nfd-ai-chat-message nfd-ai-chat-message--${type}`}>
+		<div className={`nfd-ai-chat-message nfd-ai-chat-message--${displayType}`}>
 			{content &&
 				(isRichContent ? (
 					<div

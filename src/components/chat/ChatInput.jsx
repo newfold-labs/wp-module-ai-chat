@@ -21,17 +21,23 @@ import { INPUT } from "../../config/constants";
  * @param {Function}    props.onSendMessage    - Function to call when message is sent.
  * @param {Function}    props.onStopRequest    - Function to call when stop button is clicked.
  * @param {boolean}     props.disabled         - Whether the input is disabled.
+ * @param {boolean}     props.showStopButton   - When true, show stop button instead of send (e.g. when generating). When false, show send even if disabled.
  * @param {string}      props.placeholder      - Input placeholder text.
  * @param {JSX.Element} props.contextComponent - Optional context component to render.
+ * @param {boolean}     props.showTopBorder     - When false, omits the top border. Default true.
  * @return {JSX.Element} The ChatInput component.
  */
 const ChatInput = ({
 	onSendMessage,
 	onStopRequest,
 	disabled = false,
+	showStopButton,
 	placeholder,
 	contextComponent = null,
+	showTopBorder = true,
 }) => {
+	// Show stop button only when explicitly requested (e.g. generating), not when disabled for connecting
+	const showStop = showStopButton ?? disabled;
 	const [message, setMessage] = useState("");
 	const [isStopping, setIsStopping] = useState(false);
 	const textareaRef = useRef(null);
@@ -106,8 +112,15 @@ const ChatInput = ({
 		}, INPUT.STOP_DEBOUNCE);
 	};
 
+	const rootClass = [
+		"nfd-ai-chat-input",
+		!showTopBorder && "nfd-ai-chat-input--no-top-border",
+	]
+		.filter(Boolean)
+		.join(" ");
+
 	return (
-		<div className="nfd-ai-chat-input">
+		<div className={rootClass}>
 			<div className="nfd-ai-chat-input__container">
 				<textarea
 					name="nfd-ai-chat-input"
@@ -122,7 +135,7 @@ const ChatInput = ({
 				/>
 				<div className="nfd-ai-chat-input__actions">
 					{contextComponent}
-					{disabled ? (
+					{showStop ? (
 						<Button
 							ref={stopButtonRef}
 							icon={<CircleStop width={16} height={16} />}

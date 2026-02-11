@@ -1,0 +1,118 @@
+/* Chat history list and dropdown - shared across help center and editor chat */
+
+.nfd-ai-chat-history-dropdown-wrapper {
+	display: flex;
+	align-items: center;
+}
+
+.nfd-ai-chat-history-dropdown-trigger {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 28px;
+	height: 28px;
+	padding: 0;
+	border: none;
+	background: transparent;
+	color: #1e1e1e;
+	cursor: pointer;
+	border-radius: 4px;
+	transition: background-color 0.15s ease, color 0.15s ease;
+
+	&:hover:not(:disabled) {
+		background-color: #f5f5f5;
+	}
+
+	&.is-open {
+		background-color: #f5f5f5;
+	}
+
+	&:disabled {
+		opacity: 0.5;
+		cursor: not-allowed;
+	}
+
+	svg {
+		display: block;
+	}
+}
+
+.nfd-ai-chat-history-dropdown {
+	min-width: 260px;
+	max-width: min(320px, calc(100vw - 16px));
+	max-height: 280px;
+	overflow: hidden;
+	display: flex;
+	flex-direction: column;
+	background: #fff;
+	border: 1px solid #e0e0e0;
+	border-radius: 8px;
+	box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+
+	[dir="rtl"] & {
+		left: auto;
+		right: auto;
+		inset-inline-end: 0;
+	}
+}
+
+.nfd-ai-chat-history-dropdown-inner {
+	overflow-y: auto;
+	max-height: 280px;
+	padding: 8px 0;
+}
+
+.nfd-ai-chat-history-dropdown-inner .nfd-ai-chat-history-list {
+	margin-top: 0;
+	padding-top: 0;
+	border-top: none;
+	padding-left: 12px;
+	padding-right: 12px;
+}
+
+.nfd-ai-chat-history-dropdown-inner .nfd-ai-chat-history-list--empty {
+	padding: 16px 12px;
+	font-size: 13px;
+	color: #666;
+	text-align: center;
+}
+
+.nfd-ai-chat-history-dropdown-inner .nfd-ai-chat-history-item {
+	min-height: 44px;
+	padding: 10px 0;
+	box-sizing: border-box;
+}
+
+.nfd-ai-chat-history-list {
+	margin-top: 20px;
+	padding-top: 20px;
+	border-top: 1px solid #e0e0e0;
+}
+
+.nfd-ai-chat-history-item {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	cursor: pointer;
+	color: #336ad7;
+	font-size: 12px;
+	padding: 8px 0;
+	transition: color 0.2s;
+
+	&:hover {
+		color: #1d4ed8;
+		text-decoration: underline;
+	}
+
+	&--disabled {
+		opacity: 0.5;
+		cursor: not-allowed;
+	}
+
+	svg {
+		width: 14px;
+		height: 14px;
+		flex-shrink: 0;
+		stroke: currentColor;
+	}
+}

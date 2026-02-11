@@ -23,7 +23,6 @@ export { default as useNfdAgentsWebSocket } from "./hooks/useNfdAgentsWebSocket"
 export { simpleHash, generateSessionId, debounce } from "./utils/helpers";
 export { containsMarkdown, parseMarkdown } from "./utils/markdownParser";
 export { sanitizeHtml, containsHtml } from "./utils/sanitizeHtml";
-export { generateSuccessMessage } from "./utils/messageUtils";
 
 // NFD Agents Utilities
 export { convertToWebSocketUrl, normalizeUrl, isLocalhost } from "./utils/nfdAgents/urlUtils";
@@ -36,13 +35,18 @@ export { NFD_AGENTS_WEBSOCKET, APPROVAL, UI, INPUT } from "./config/constants";
 export { default as ChatMessage } from "./components/chat/ChatMessage";
 export { default as ChatMessages } from "./components/chat/ChatMessages";
 export { default as ChatInput } from "./components/chat/ChatInput";
+export { default as ChatHeader } from "./components/chat/ChatHeader";
 export { default as WelcomeScreen } from "./components/chat/WelcomeScreen";
+
+// Chat history (storageNamespace must match useNfdAgentsWebSocket for same consumer)
+export { archiveConversation } from "./components/history/archiveConversation";
+export { default as ChatHistoryList } from "./components/history/ChatHistoryList";
+export { default as ChatHistoryDropdown } from "./components/history/ChatHistoryDropdown";
 
 // UI Components
 export { default as AILogo } from "./components/ui/AILogo";
 export { default as BluBetaHeading } from "./components/ui/BluBetaHeading";
-export { default as ApprovalDialog } from "./components/ui/ApprovalDialog";
-export { default as InlineApproval } from "./components/ui/InlineApproval";
+export { default as ChatHeaderBar } from "./components/ui/ChatHeaderBar";
 export { default as ErrorAlert } from "./components/ui/ErrorAlert";
 export { default as SuggestionButton } from "./components/ui/SuggestionButton";
 export { default as ToolExecutionList } from "./components/ui/ToolExecutionList";

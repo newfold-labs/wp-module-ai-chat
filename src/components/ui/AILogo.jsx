@@ -1,13 +1,13 @@
 /**
- * Internal dependencies
+ * External dependencies
  */
-import { ReactComponent as BluLogo } from "../../svg/blu-logo.svg";
+import { Sparkles } from "lucide-react";
 
 /**
  * AILogo Component
  *
  * A reusable logo component for the AI assistant with purple gradient background
- * and BLU beta logo icon.
+ * and white sparks icon.
  *
  * @param {Object} props        - The component props.
  * @param {number} props.width  - The width of the logo (default: 24).
@@ -22,7 +22,7 @@ const AILogo = ( { width = 24, height = 24 } ) => (
 			height,
 		} }
 	>
-		<BluLogo width={ width * 0.625 } height={ height * 0.625 } />
+		<Sparkles width={ width * 0.625 } height={ height * 0.625 } />
 	</div>
 );
 

@@ -181,6 +181,7 @@
 		.nfd-ai-chat-message__content {
 			flex: 1;
 			width: 100%;
+			min-width: 0; // Allow flex item to shrink so long text wraps
 			max-width: 85%;
 			line-height: 1.6;
 			color: var(--nfd-ai-chat-color-text);
@@ -190,6 +191,9 @@
 			border: 1px solid var(--nfd-ai-chat-color-border);
 			box-shadow: var(--nfd-ai-chat-shadow-sm);
 			white-space: pre-wrap;
+			overflow-wrap: break-word;
+			word-break: break-word;
+			overflow: hidden; // Prevent content from overflowing dialog
 
 			&--rich {
 				white-space: normal;

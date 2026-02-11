@@ -6,6 +6,11 @@
 	z-index: 25;
 	position: relative;
 	border-top: 1px solid var(--nfd-ai-chat-color-border);
+
+	// Optional: remove top border via modifier or showTopBorder={false}
+	&--no-top-border {
+		border-top: none;
+	}
 }
 
 .nfd-ai-chat-input__disclaimer {

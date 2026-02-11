@@ -15,7 +15,23 @@ export const NFD_AGENTS_WEBSOCKET = {
 	TYPING_TIMEOUT: 60000, // 60 seconds - timeout to hide typing indicator if no response
 	STORAGE_KEY_PATTERN: 'nfd-ai-chat-{storageNamespace}-history',
 	CONVERSATION_STORAGE_KEY_PATTERN: 'nfd-ai-chat-{storageNamespace}-conversation-id',
+	SESSION_STORAGE_KEY_PATTERN: 'nfd-ai-chat-{storageNamespace}-session-id',
+	ARCHIVE_STORAGE_KEY_PATTERN: 'nfd-ai-chat-{storageNamespace}-archive',
 };
+
+/**
+ * Get localStorage keys for chat history and archive for a given storage namespace.
+ * Must match the keys used in useNfdAgentsWebSocket for the same consumer.
+ *
+ * @param {string} storageNamespace - e.g. 'help_center', 'editor_chat'
+ * @return {{ history: string, conversationId: string, sessionId: string, archive: string }}
+ */
+export const getChatHistoryStorageKeys = (storageNamespace) => ({
+	history: `nfd-ai-chat-${storageNamespace}-history`,
+	conversationId: `nfd-ai-chat-${storageNamespace}-conversation-id`,
+	sessionId: `nfd-ai-chat-${storageNamespace}-session-id`,
+	archive: `nfd-ai-chat-${storageNamespace}-archive`,
+});
 
 /**
  * Approval Dialog Configuration
