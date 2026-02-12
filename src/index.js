@@ -42,9 +42,9 @@ export { default as ChatHeader } from "./components/chat/ChatHeader";
 export { default as WelcomeScreen } from "./components/chat/WelcomeScreen";
 
 // Chat history (consumer must match useNfdAgentsWebSocket for same consumer)
-export { archiveConversation, removeConversationFromArchive } from "./components/history/archiveConversation";
-export { default as ChatHistoryList } from "./components/history/ChatHistoryList";
-export { default as ChatHistoryDropdown } from "./components/history/ChatHistoryDropdown";
+export { archiveConversation, removeConversationFromArchive } from "./utils/nfdAgents/archiveConversation";
+export { default as ChatHistoryList } from "./components/chat/ChatHistoryList";
+export { default as ChatHistoryDropdown } from "./components/chat/ChatHistoryDropdown";
 
 // UI Components
 export { default as AILogo } from "./components/ui/AILogo";

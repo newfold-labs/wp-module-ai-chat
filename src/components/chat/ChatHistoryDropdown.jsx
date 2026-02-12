@@ -12,11 +12,15 @@ import {
 	useLayoutEffect,
 	useCallback,
 	createPortal,
-} from '@wordpress/element';
-import { __ } from '@wordpress/i18n';
-import ChatHistoryList from './ChatHistoryList';
+} from "@wordpress/element";
+import { __ } from "@wordpress/i18n";
+import ChatHistoryList from "./ChatHistoryList";
 
-/** Clock / history icon - inline SVG */
+/**
+ * Clock / history icon - inline SVG
+ *
+ * @param {Object} props - Props to spread onto the SVG element.
+ */
 const ClockIcon = (props) => (
 	<svg
 		width="16"
@@ -28,31 +32,23 @@ const ClockIcon = (props) => (
 		focusable="false"
 		{...props}
 	>
-		<circle
-			cx="12"
-			cy="12"
-			r="9"
-			stroke="currentColor"
-			strokeWidth="2"
-		/>
-		<path
-			d="M12 7v5l3 3"
-			stroke="currentColor"
-			strokeWidth="2"
-			strokeLinecap="round"
-		/>
+		<circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="2" />
+		<path d="M12 7v5l3 3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
 	</svg>
 );
 
 /**
+ * Dropdown trigger and portal-rendered panel with ChatHistoryList.
+ *
  * @param {Object}   props
- * @param {string}   props.consumer   - Must match useNfdAgentsWebSocket for same consumer
+ * @param {string}   props.consumer             - Must match useNfdAgentsWebSocket for same consumer
  * @param {boolean}  props.open
  * @param {Function} props.onOpenChange
  * @param {Function} props.onSelectConversation
  * @param {number}   [props.refreshTrigger=0]
  * @param {boolean}  [props.disabled=false]
  * @param {number}   [props.maxHistoryItems]
+ * @return {JSX.Element} Dropdown trigger and portal-rendered history panel.
  */
 const ChatHistoryDropdown = ({
 	consumer,
@@ -68,7 +64,9 @@ const ChatHistoryDropdown = ({
 	const [position, setPosition] = useState({ top: 0, left: 0, openUp: false });
 
 	const updatePosition = useCallback(() => {
-		if (!triggerRef.current) return;
+		if (!triggerRef.current) {
+			return;
+		}
 		const rect = triggerRef.current.getBoundingClientRect();
 		const panelHeight = 240;
 		const spaceBelow = window.innerHeight - rect.bottom;
@@ -87,33 +85,34 @@ const ChatHistoryDropdown = ({
 	}, [open, updatePosition]);
 
 	useEffect(() => {
-		if (!open) return;
+		if (!open) {
+			return;
+		}
 		const handleResize = () => updatePosition();
-		window.addEventListener('resize', handleResize);
-		return () => window.removeEventListener('resize', handleResize);
+		window.addEventListener("resize", handleResize);
+		return () => window.removeEventListener("resize", handleResize);
 	}, [open, updatePosition]);
 
 	useEffect(() => {
-		if (!open) return;
+		if (!open) {
+			return;
+		}
 		const handleClickOutside = (e) => {
-			if (
-				triggerRef.current?.contains(e.target) ||
-				panelRef.current?.contains(e.target)
-			) {
+			if (triggerRef.current?.contains(e.target) || panelRef.current?.contains(e.target)) {
 				return;
 			}
 			onOpenChange(false);
 		};
 		const handleEscape = (e) => {
-			if (e.key === 'Escape') {
+			if (e.key === "Escape") {
 				onOpenChange(false);
 			}
 		};
-		document.addEventListener('mousedown', handleClickOutside);
-		document.addEventListener('keydown', handleEscape);
+		document.addEventListener("mousedown", handleClickOutside);
+		document.addEventListener("keydown", handleEscape);
 		return () => {
-			document.removeEventListener('mousedown', handleClickOutside);
-			document.removeEventListener('keydown', handleEscape);
+			document.removeEventListener("mousedown", handleClickOutside);
+			document.removeEventListener("keydown", handleEscape);
 		};
 	}, [open, onOpenChange]);
 
@@ -125,22 +124,24 @@ const ChatHistoryDropdown = ({
 		[onSelectConversation, onOpenChange]
 	);
 
-	const handleTriggerClick = () => {
-		if (disabled) return;
+	const handleTriggerClick = useCallback(() => {
+		if (disabled) {
+			return;
+		}
 		onOpenChange(!open);
-	};
+	}, [disabled, open, onOpenChange]);
 
 	const dropdownPanel = (
 		<div
 			ref={panelRef}
 			className="nfd-ai-chat-history-dropdown"
 			role="dialog"
-			aria-label={__('Chat history', 'wp-module-ai-chat')}
+			aria-label={__("Chat history", "wp-module-ai-chat")}
 			style={{
-				position: 'fixed',
-				top: position.openUp ? 'auto' : position.top,
-				bottom: position.openUp ? window.innerHeight - position.top : 'auto',
-				left: 'auto',
+				position: "fixed",
+				top: position.openUp ? "auto" : position.top,
+				bottom: position.openUp ? window.innerHeight - position.top : "auto",
+				left: "auto",
 				right: window.innerWidth - position.left,
 				zIndex: 100000,
 			}}
@@ -151,7 +152,7 @@ const ChatHistoryDropdown = ({
 					onSelectConversation={handleSelect}
 					disabled={disabled}
 					refreshTrigger={open ? refreshTrigger : 0}
-					emptyMessage={__('No conversations yet.', 'wp-module-ai-chat')}
+					emptyMessage={__("No conversations yet.", "wp-module-ai-chat")}
 					maxHistoryItems={maxHistoryItems}
 				/>
 			</div>
@@ -163,13 +164,13 @@ const ChatHistoryDropdown = ({
 			<button
 				ref={triggerRef}
 				type="button"
-				className={`nfd-ai-chat-history-dropdown-trigger ${open ? 'is-open' : ''}`}
+				className={`nfd-ai-chat-history-dropdown-trigger ${open ? "is-open" : ""}`}
 				onClick={handleTriggerClick}
 				disabled={disabled}
 				aria-expanded={open}
 				aria-haspopup="true"
-				aria-label={__('Chat history', 'wp-module-ai-chat')}
-				title={__('Chat history', 'wp-module-ai-chat')}
+				aria-label={__("Chat history", "wp-module-ai-chat")}
+				title={__("Chat history", "wp-module-ai-chat")}
 			>
 				<ClockIcon />
 			</button>
