@@ -2,12 +2,13 @@
  * WordPress dependencies
  */
 import { Button } from "@wordpress/components";
-import { useEffect, useRef, useState } from "@wordpress/element";
+import { useCallback, useEffect, useRef, useState } from "@wordpress/element";
 import { __ } from "@wordpress/i18n";
 
 /**
  * External dependencies
  */
+import classnames from "classnames";
 import { ArrowUp, CircleStop } from "lucide-react";
 import { INPUT } from "../../config/constants";
 
@@ -17,14 +18,14 @@ import { INPUT } from "../../config/constants";
  * Context-agnostic chat input field. Accepts optional contextComponent prop
  * for consumers to inject their own context indicators (e.g., selected block).
  *
- * @param {Object}      props                  - The component props.
- * @param {Function}    props.onSendMessage    - Function to call when message is sent.
- * @param {Function}    props.onStopRequest    - Function to call when stop button is clicked.
- * @param {boolean}     props.disabled         - Whether the input is disabled.
- * @param {boolean}     props.showStopButton   - When true, show stop button instead of send (e.g. when generating). When false, show send even if disabled.
- * @param {string}      props.placeholder      - Input placeholder text.
- * @param {JSX.Element} props.contextComponent - Optional context component to render.
- * @param {boolean}     props.showTopBorder     - When false, omits the top border. Default true.
+ * @param {Object}                    props                    - The component props.
+ * @param {Function}                  props.onSendMessage      - Function to call when message is sent.
+ * @param {Function}                  props.onStopRequest      - Function to call when stop button is clicked.
+ * @param {boolean}                   props.disabled           - Whether the input is disabled.
+ * @param {boolean}                   props.showStopButton     - When true, show stop button instead of send (e.g. when generating). When false, show send even if disabled.
+ * @param {string}                    props.placeholder        - Input placeholder text.
+ * @param {import('react').ReactNode} [props.contextComponent] - Optional context component to render (e.g. selected block).
+ * @param {boolean}                   [props.showTopBorder]    - When false, omits the top border. Default true.
  * @return {JSX.Element} The ChatInput component.
  */
 const ChatInput = ({
@@ -41,7 +42,6 @@ const ChatInput = ({
 	const [message, setMessage] = useState("");
 	const [isStopping, setIsStopping] = useState(false);
 	const textareaRef = useRef(null);
-	const stopButtonRef = useRef(null);
 
 	const defaultPlaceholder = __("How can I help you today?", "wp-module-ai-chat");
 
@@ -52,7 +52,7 @@ const ChatInput = ({
 			const scrollHeight = textareaRef.current.scrollHeight;
 			const newHeight = Math.min(scrollHeight, INPUT.MAX_HEIGHT);
 			textareaRef.current.style.height = `${newHeight}px`;
-			
+
 			// Only show scrollbar when content actually overflows
 			// This prevents the disabled scrollbar from appearing when empty
 			if (scrollHeight > INPUT.MAX_HEIGHT) {
@@ -72,7 +72,7 @@ const ChatInput = ({
 		}
 	}, [disabled]);
 
-	const handleSubmit = () => {
+	const handleSubmit = useCallback(() => {
 		if (message.trim() && !disabled) {
 			onSendMessage(message);
 			setMessage("");
@@ -82,45 +82,37 @@ const ChatInput = ({
 				textareaRef.current.focus();
 			}
 		}
-	};
+	}, [message, disabled, onSendMessage]);
 
-	const handleKeyDown = (e) => {
-		if (e.key === "Enter" && !e.shiftKey) {
-			e.preventDefault();
-			handleSubmit();
-		}
-	};
+	const handleKeyDown = useCallback(
+		(e) => {
+			if (e.key === "Enter" && !e.shiftKey) {
+				e.preventDefault();
+				handleSubmit();
+			}
+		},
+		[handleSubmit]
+	);
 
-	const handleStopRequest = () => {
-		// Prevent multiple rapid clicks (debounce)
+	const handleStopRequest = useCallback(() => {
 		if (isStopping) {
 			return;
 		}
-
-		// Immediately disable button to prevent rage clicks
 		setIsStopping(true);
-		
-		// Call the stop handler
 		if (onStopRequest) {
 			onStopRequest();
 		}
-
-		// Re-enable after a short delay to allow for re-connection if needed
-		// This prevents the button from being permanently disabled
 		setTimeout(() => {
 			setIsStopping(false);
 		}, INPUT.STOP_DEBOUNCE);
-	};
+	}, [isStopping, onStopRequest]);
 
-	const rootClass = [
-		"nfd-ai-chat-input",
-		!showTopBorder && "nfd-ai-chat-input--no-top-border",
-	]
-		.filter(Boolean)
-		.join(" ");
+	const rootClassName = classnames("nfd-ai-chat-input", {
+		"nfd-ai-chat-input--no-top-border": !showTopBorder,
+	});
 
 	return (
-		<div className={rootClass}>
+		<div className={rootClassName}>
 			<div className="nfd-ai-chat-input__container">
 				<textarea
 					name="nfd-ai-chat-input"
@@ -137,7 +129,6 @@ const ChatInput = ({
 					{contextComponent}
 					{showStop ? (
 						<Button
-							ref={stopButtonRef}
 							icon={<CircleStop width={16} height={16} />}
 							label={__("Stop generating", "wp-module-ai-chat")}
 							onClick={handleStopRequest}
