@@ -3,6 +3,7 @@
 namespace NewfoldLabs\WP\Module\AIChat;
 
 use NewfoldLabs\WP\ModuleLoader\Container;
+use NewfoldLabs\WP\Module\AIChat\RestApi\RestApi;
 
 /**
  * Main Application class for the AI Chat module.
@@ -23,5 +24,8 @@ class Application {
 	 */
 	public function __construct( Container $container ) {
 		$this->container = $container;
+
+		// Initialize REST API
+		new RestApi();
 	}
 }
