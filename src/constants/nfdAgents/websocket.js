@@ -1,14 +1,11 @@
 /**
  * NFD Agents WebSocket Configuration
  *
- * Constants for WebSocket connection, reconnection, and storage key patterns.
+ * Constants for WebSocket connection, reconnection, and typing indicator timeout.
+ * Storage key construction lives in storageKeys.js (getChatHistoryStorageKeys).
  */
 export const NFD_AGENTS_WEBSOCKET = {
 	MAX_RECONNECT_ATTEMPTS: 5,
-	RECONNECT_DELAY: 1000, // Base delay in milliseconds
-	TYPING_TIMEOUT: 60000, // 60 seconds - timeout to hide typing indicator if no response
-	STORAGE_KEY_PATTERN: 'nfd-ai-chat-{consumer}-history',
-	CONVERSATION_STORAGE_KEY_PATTERN: 'nfd-ai-chat-{consumer}-conversation-id',
-	SESSION_STORAGE_KEY_PATTERN: 'nfd-ai-chat-{consumer}-session-id',
-	ARCHIVE_STORAGE_KEY_PATTERN: 'nfd-ai-chat-{consumer}-archive',
+	RECONNECT_DELAY: 1000, // Base delay between reconnect attempts (ms)
+	TYPING_TIMEOUT: 60000, // Hide typing indicator if no response within this time (ms)
 };

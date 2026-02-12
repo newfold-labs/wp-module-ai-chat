@@ -6,25 +6,26 @@
 
 /** Status keys for the typing indicator (no UI copy here) */
 export const TYPING_STATUS = {
-	PROCESSING: 'processing',
-	CONNECTING: 'connecting',
-	WS_CONNECTING: 'ws_connecting',
-	TOOL_CALL: 'tool_call',
-	WORKING: 'working',
+	PROCESSING: "processing",
+	CONNECTING: "connecting",
+	WS_CONNECTING: "ws_connecting",
+	TOOL_CALL: "tool_call",
+	WORKING: "working",
 	// Existing keys used elsewhere
-	RECEIVED: 'received',
-	GENERATING: 'generating',
-	SUMMARIZING: 'summarizing',
-	COMPLETED: 'completed',
-	FAILED: 'failed',
+	RECEIVED: "received",
+	GENERATING: "generating",
+	SUMMARIZING: "summarizing",
+	COMPLETED: "completed",
+	FAILED: "failed",
 };
 
 /**
  * Map WebSocket message type to typing status key.
  * Add new event types here to drive status without scattering branches.
+ * Returns null for typing_stop (and unknown types) to clear the indicator.
  *
- * @param {string} eventType - data.type from WebSocket message
- * @return {string|null} Status key or null to clear
+ * @param {string} eventType data.type from WebSocket message
+ * @return {string|null} TYPING_STATUS key, or null to clear the typing indicator
  */
 export function getStatusForEventType(eventType) {
 	const map = {

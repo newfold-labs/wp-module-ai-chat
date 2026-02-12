@@ -8,13 +8,13 @@ import { __ } from "@wordpress/i18n";
  */
 import { CloseIcon, SparklesOutlineIcon } from "../icons";
 import BluBetaHeading from "../ui/BluBetaHeading";
-import ChatHeaderBar from "../ui/ChatHeaderBar";
+import HeaderBar from "../ui/HeaderBar";
 
 /**
  * ChatHeader Component
  *
  * Header for the chat panel: white background; left = outline sparkles icon + title + BETA pill.
- * New chat (+) and Close (×) on the right. Built on shared ChatHeaderBar.
+ * New chat (+) and Close (×) on the right. Built on shared HeaderBar layout.
  *
  * @param {Object}                    props                   - Component props.
  * @param {string}                    [props.title]           - Title text next to logo (e.g. "Blu Chat"). Default "Blu Chat".
@@ -25,7 +25,7 @@ import ChatHeaderBar from "../ui/ChatHeaderBar";
  * @return {JSX.Element} The ChatHeader component.
  */
 const ChatHeader = ({ title, onNewChat, onClose, extraActions, newChatDisabled = false }) => (
-	<ChatHeaderBar
+	<HeaderBar
 		logo={<SparklesOutlineIcon width={20} height={20} />}
 		title={title || __("Blu Chat", "wp-module-ai-chat")}
 		badge={<BluBetaHeading />}

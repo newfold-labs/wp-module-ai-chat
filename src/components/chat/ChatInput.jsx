@@ -10,7 +10,7 @@ import { __ } from "@wordpress/i18n";
  */
 import classnames from "classnames";
 import { ArrowUp, CircleStop } from "lucide-react";
-import { INPUT } from "../../config/constants";
+import { INPUT } from "../../constants/nfdAgents/input";
 
 /**
  * ChatInput Component
