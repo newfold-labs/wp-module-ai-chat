@@ -8,9 +8,9 @@
  * and maps all known error codes to i18n error messages.
  */
 
-import { __, sprintf } from '@wordpress/i18n';
-import apiFetch from '@wordpress/api-fetch';
-import { getRestApiBaseUrl } from '../restApi.js';
+import { __, sprintf } from "@wordpress/i18n";
+import apiFetch from "@wordpress/api-fetch";
+import { getRestApiBaseUrl } from "../restApi.js";
 
 /**
  * Get base URL for the current site (origin or home URL including subdirectory).
@@ -18,8 +18,8 @@ import { getRestApiBaseUrl } from '../restApi.js';
  * @return {string} Base URL
  */
 function getBaseUrl() {
-	if (typeof window === 'undefined') {
-		return '';
+	if (typeof window === "undefined") {
+		return "";
 	}
 	const config = window.nfdAIChat || {};
 	return config.homeUrl || window.location.origin;
@@ -30,8 +30,8 @@ function getBaseUrl() {
  * Uses rest_route query parameter for the request so it works regardless of permalink settings.
  *
  * @param {Object} options
- * @param {string} options.configEndpoint  REST API endpoint (full URL or relative path)
- * @param {string} options.consumer  Consumer identifier (required). Sent as query param `consumer`. Valid values are defined by the backend.
+ * @param {string} options.configEndpoint REST API endpoint (full URL or relative path). Example full URL: 'https://example.com/wp-json/nfd-agents/chat/v1/config'. Example relative path: 'nfd-agents/chat/v1/config'.
+ * @param {string} options.consumer       Consumer identifier (required). Sent as query param `consumer`. Valid values are defined by the backend.
  * @return {Promise<Object>} Config object from backend
  * @throws {Error} With i18n message on failure
  */
@@ -41,31 +41,31 @@ export async function fetchAgentConfig({ configEndpoint, consumer }) {
 		let path = configEndpoint;
 		let baseUrl = getBaseUrl();
 
-		if (configEndpoint.startsWith('http://') || configEndpoint.startsWith('https://')) {
+		if (configEndpoint.startsWith("http://") || configEndpoint.startsWith("https://")) {
 			const urlObj = new URL(configEndpoint);
-			if (urlObj.searchParams.has('rest_route')) {
-				path = urlObj.searchParams.get('rest_route');
-			} else if (urlObj.pathname.includes('/wp-json/')) {
-				path = urlObj.pathname.replace(/^\/wp-json\//, '').replace(/^\/wp-json/, '');
+			if (urlObj.searchParams.has("rest_route")) {
+				path = urlObj.searchParams.get("rest_route");
+			} else if (urlObj.pathname.includes("/wp-json/")) {
+				path = urlObj.pathname.replace(/^\/wp-json\//, "").replace(/^\/wp-json/, "");
 			} else {
-				path = urlObj.pathname.replace(/^\//, '');
+				path = urlObj.pathname.replace(/^\//, "");
 			}
 			// Base URL for rest_route: origin + pathname (without query), or path before /wp-json
-			if (urlObj.pathname.includes('/wp-json')) {
-				const beforeWpJson = urlObj.pathname.split('/wp-json')[0].replace(/\/$/, '');
-				baseUrl = urlObj.origin + (beforeWpJson || '/');
+			if (urlObj.pathname.includes("/wp-json")) {
+				const beforeWpJson = urlObj.pathname.split("/wp-json")[0].replace(/\/$/, "");
+				baseUrl = urlObj.origin + (beforeWpJson || "/");
 			} else {
-				baseUrl = urlObj.origin + (urlObj.pathname || '/');
+				baseUrl = urlObj.origin + (urlObj.pathname || "/");
 			}
 		}
 
-		const cleanPath = path.replace(/^\//, '');
+		const cleanPath = path.replace(/^\//, "");
 
 		// Always use rest_route parameter (never wp-json) so permalinks are not required
 		const restBase = getRestApiBaseUrl(baseUrl);
-		const restRoute = restBase.includes('rest_route=')
+		const restRoute = restBase.includes("rest_route=")
 			? restBase.replace(/rest_route=\/?/, `rest_route=/${cleanPath}`)
-			: `${restBase}${restBase.includes('?') ? '&' : '?'}rest_route=/${cleanPath}`;
+			: `${restBase}${restBase.includes("?") ? "&" : "?"}rest_route=/${cleanPath}`;
 		const url = `${restRoute}&consumer=${encodeURIComponent(consumer)}`;
 
 		const config = await apiFetch({
@@ -76,9 +76,9 @@ export async function fetchAgentConfig({ configEndpoint, consumer }) {
 		return config;
 	} catch (err) {
 		// eslint-disable-next-line no-console
-		console.error('[AI Chat] Failed to fetch config:', err);
+		console.error("[AI Chat] Failed to fetch config:", err);
 		// eslint-disable-next-line no-console
-		console.error('[AI Chat] Error details:', {
+		console.error("[AI Chat] Error details:", {
 			message: err.message,
 			code: err.code,
 			data: err.data,
@@ -87,26 +87,35 @@ export async function fetchAgentConfig({ configEndpoint, consumer }) {
 		});
 
 		// Handle apiFetch errors
-		let errorMessage = err.message || __('Failed to connect', 'wp-module-ai-chat');
+		let errorMessage = err.message || __("Failed to connect", "wp-module-ai-chat");
 
 		if (err.data?.message) {
 			errorMessage = err.data.message;
-		} else if (err.message && err.message !== 'Could not get a valid response from the server.') {
+		} else if (err.message && err.message !== "Could not get a valid response from the server.") {
 			errorMessage = err.message;
 		}
 
-		if (err.code === 'rest_forbidden' || err.data?.status === 403) {
-			errorMessage = __('Access denied. Please check your capabilities.', 'wp-module-ai-chat');
-		} else if (err.code === 'rest_no_route' || err.data?.status === 404) {
-			errorMessage = __('Config endpoint not found. Please ensure the backend is deployed.', 'wp-module-ai-chat');
-		} else if (err.code === 'gateway_url_not_configured') {
-			errorMessage = __('Gateway URL not configured. Set NFD_AGENTS_CHAT_GATEWAY_URL in wp-config.php.', 'wp-module-ai-chat');
-		} else if (err.code === 'huapi_token_fetch_failed') {
-			errorMessage = __('Failed to fetch authentication token from Hiive. Check your connection or set NFD_AGENTS_CHAT_DEBUG_TOKEN for local development.', 'wp-module-ai-chat');
+		if (err.code === "rest_forbidden" || err.data?.status === 403) {
+			errorMessage = __("Access denied. Please check your capabilities.", "wp-module-ai-chat");
+		} else if (err.code === "rest_no_route" || err.data?.status === 404) {
+			errorMessage = __(
+				"Config endpoint not found. Please ensure the backend is deployed.",
+				"wp-module-ai-chat"
+			);
+		} else if (err.code === "gateway_url_not_configured") {
+			errorMessage = __(
+				"Gateway URL not configured. Set NFD_AGENTS_CHAT_GATEWAY_URL in wp-config.php.",
+				"wp-module-ai-chat"
+			);
+		} else if (err.code === "huapi_token_fetch_failed") {
+			errorMessage = __(
+				"Failed to fetch authentication token from Hiive. Check your connection or set NFD_AGENTS_CHAT_DEBUG_TOKEN for local development.",
+				"wp-module-ai-chat"
+			);
 		} else if (err.data?.status) {
 			errorMessage = sprintf(
 				/* translators: %1$s: HTTP status, %2$s: status text */
-				__('Failed to fetch config: %1$s %2$s', 'wp-module-ai-chat'),
+				__("Failed to fetch config: %1$s %2$s", "wp-module-ai-chat"),
 				err.data.status,
 				err.data.statusText || errorMessage
 			);
