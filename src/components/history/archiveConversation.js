@@ -9,7 +9,7 @@
  * @param {Object} [options]         - Optional settings
  * @param {number} [options.maxHistoryItems=3] - Max number of chats to keep in archive
  */
-import { getChatHistoryStorageKeys } from '../../config/constants';
+import { getChatHistoryStorageKeys } from '../../constants/nfdAgents/storageKeys';
 
 export function archiveConversation(
 	messages,

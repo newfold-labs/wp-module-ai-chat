@@ -9,8 +9,7 @@
 	transition: transform 0.2s ease, box-shadow 0.2s ease;
 
 	svg {
-		stroke: currentcolor;
-		fill: none;
+		fill: currentColor;
 	}
 }
 
@@ -23,18 +22,20 @@
 	background-color: var(--nfd-ai-chat-color-white);
 	padding: 12px 16px;
 	flex-shrink: 0;
+}
 
-	/* Header logo: no background, black icon (not blue) */
-	.nfd-ai-chat-avatar {
-		background: none;
-		color: var(--nfd-ai-chat-color-text, #1e1e1e);
-	}
+/* Header logo: no background, plain icon — higher specificity to override brand styles */
+.nfd-ai-chat-header .nfd-ai-chat-header__brand .nfd-ai-chat-avatar {
+	background: none;
+	color: var(--nfd-ai-chat-color-text, #1e1e1e);
+	box-shadow: none;
 }
 
 .nfd-ai-chat-header__brand {
 	display: flex;
 	align-items: center;
 	gap: 8px;
+	color: var(--nfd-ai-chat-color-text, #1e1e1e);
 }
 
 .nfd-ai-chat-header__title {

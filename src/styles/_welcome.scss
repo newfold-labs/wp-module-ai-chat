@@ -21,12 +21,13 @@
 	align-items: center;
 	justify-content: center;
 	margin-bottom: 24px;
+}
 
-	/* Purplish gradient logo on welcome (matches editor-chat) */
-	.nfd-ai-chat-avatar {
-		background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-		color: #fff;
-	}
+/* Purplish gradient logo on welcome — higher specificity to override brand styles */
+.nfd-ai-chat-welcome .nfd-ai-chat-welcome__avatar .nfd-ai-chat-avatar {
+	background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+	color: #fff;
+	box-shadow: none;
 }
 
 .nfd-ai-chat-welcome__message {

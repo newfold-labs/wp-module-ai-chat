@@ -25,12 +25,14 @@ export { containsMarkdown, parseMarkdown } from "./utils/markdownParser";
 export { sanitizeHtml, containsHtml } from "./utils/sanitizeHtml";
 
 // NFD Agents Utilities
-export { convertToWebSocketUrl, normalizeUrl, isLocalhost } from "./utils/nfdAgents/urlUtils";
+export { convertToWebSocketUrl, normalizeUrl, isLocalhost, buildWebSocketUrl } from "./utils/nfdAgents/urlUtils";
 export { isInitialGreeting } from "./utils/nfdAgents/greetingUtils";
 
 // Constants
-export { NFD_AGENTS_WEBSOCKET, getChatHistoryStorageKeys, APPROVAL, UI, INPUT } from "./config/constants";
-export { TYPING_STATUS } from "./constants/typingStatus";
+export { NFD_AGENTS_WEBSOCKET } from "./constants/nfdAgents/websocket";
+export { getChatHistoryStorageKeys } from "./constants/nfdAgents/storageKeys";
+export { TYPING_STATUS } from "./constants/nfdAgents/typingStatus";
+export { APPROVAL, UI, INPUT } from "./config/constants";
 
 // Chat Components
 export { default as ChatMessage } from "./components/chat/ChatMessage";

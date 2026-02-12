@@ -3,7 +3,7 @@
  */
 import { useState, useEffect } from "@wordpress/element";
 import { __ } from "@wordpress/i18n";
-import { TYPING_STATUS } from "../../constants/typingStatus";
+import { TYPING_STATUS } from "../../constants/nfdAgents/typingStatus";
 
 /**
  * External dependencies
@@ -190,7 +190,6 @@ const ToolExecutionItem = ({ tool, isActive, progress, isComplete, isError }) =>
  * @param {string} props.toolProgress     - Real-time progress message.
  * @param {Array}  props.executedTools    - List of already executed tools.
  * @param {Array}  props.pendingTools     - List of pending tools to execute.
- * @param {string} props.reasoningContent - The reasoning content.
  * @return {JSX.Element} The TypingIndicator component.
  */
 const TypingIndicator = ({
@@ -199,7 +198,6 @@ const TypingIndicator = ({
 	toolProgress = null,
 	executedTools = [],
 	pendingTools = [],
-	reasoningContent = "",
 }) => {
 	const [isExpanded, setIsExpanded] = useState(true);
 	const isExecuting = !!activeToolCall;
@@ -351,9 +349,6 @@ const TypingIndicator = ({
 					</span>
 					<span className="nfd-ai-chat-typing-indicator__text">{getStatusText()}</span>
 				</div>
-				{reasoningContent && (
-					<div className="nfd-ai-chat-typing-indicator__reasoning">{reasoningContent}</div>
-				)}
 			</div>
 		</div>
 	);

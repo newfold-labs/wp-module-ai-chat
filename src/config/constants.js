@@ -1,37 +1,14 @@
 /**
  * Constants Configuration
- * 
+ *
  * Centralized constants for the AI Chat module.
  * All magic numbers, timeouts, and UI values should be defined here.
- */
-
-/**
- * NFD Agents WebSocket Configuration
- * Constants for WebSocket connection, reconnection, and storage
- */
-export const NFD_AGENTS_WEBSOCKET = {
-	MAX_RECONNECT_ATTEMPTS: 5,
-	RECONNECT_DELAY: 1000, // Base delay in milliseconds
-	TYPING_TIMEOUT: 60000, // 60 seconds - timeout to hide typing indicator if no response
-	STORAGE_KEY_PATTERN: 'nfd-ai-chat-{storageNamespace}-history',
-	CONVERSATION_STORAGE_KEY_PATTERN: 'nfd-ai-chat-{storageNamespace}-conversation-id',
-	SESSION_STORAGE_KEY_PATTERN: 'nfd-ai-chat-{storageNamespace}-session-id',
-	ARCHIVE_STORAGE_KEY_PATTERN: 'nfd-ai-chat-{storageNamespace}-archive',
-};
-
-/**
- * Get localStorage keys for chat history and archive for a given storage namespace.
- * Must match the keys used in useNfdAgentsWebSocket for the same consumer.
  *
- * @param {string} storageNamespace - e.g. 'help_center', 'editor_chat'
- * @return {{ history: string, conversationId: string, sessionId: string, archive: string }}
+ * NFD Agents-specific constants have been moved to:
+ * - src/constants/nfdAgents/websocket.js    (NFD_AGENTS_WEBSOCKET)
+ * - src/constants/nfdAgents/storageKeys.js  (getSiteId, setSiteId, migrateStorageKeys, getChatHistoryStorageKeys)
+ * - src/constants/nfdAgents/typingStatus.js (TYPING_STATUS, getStatusForEventType)
  */
-export const getChatHistoryStorageKeys = (storageNamespace) => ({
-	history: `nfd-ai-chat-${storageNamespace}-history`,
-	conversationId: `nfd-ai-chat-${storageNamespace}-conversation-id`,
-	sessionId: `nfd-ai-chat-${storageNamespace}-session-id`,
-	archive: `nfd-ai-chat-${storageNamespace}-archive`,
-});
 
 /**
  * Approval Dialog Configuration

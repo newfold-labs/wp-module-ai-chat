@@ -9,7 +9,7 @@
 import { useState, useEffect, useCallback } from '@wordpress/element';
 import { __ } from '@wordpress/i18n';
 import { History, Trash2 } from 'lucide-react';
-import { getChatHistoryStorageKeys } from '../../config/constants';
+import { getChatHistoryStorageKeys } from '../../constants/nfdAgents/storageKeys';
 
 /**
  * Human-readable relative time (e.g. 2m, 2h, 2d).

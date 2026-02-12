@@ -54,6 +54,27 @@ export const isLocalhost = (url) => {
  * @param {string} siteUrl Site URL to normalize
  * @returns {string} Normalized URL with protocol
  */
+/**
+ * Build the full WebSocket URL from config, session ID, and consumer type.
+ * Normalizes the 'nfd-agents' agent type alias to 'blu'.
+ *
+ * @param {Object} config                Config object from fetchAgentConfig
+ * @param {string} config.gateway_url    Gateway HTTP(S) URL
+ * @param {string} config.brand_id       Brand identifier
+ * @param {string} config.agent_type     Agent type (may be 'nfd-agents' alias)
+ * @param {string} config.huapi_token    Auth token
+ * @param {string} sessionId             Session ID for the connection
+ * @param {string} consumerType          Consumer type (e.g. 'help_center', 'editor_chat')
+ * @return {string} Full WebSocket URL with query parameters
+ */
+export const buildWebSocketUrl = (config, sessionId, consumerType) => {
+	const wsBaseUrl = convertToWebSocketUrl(config.gateway_url);
+	const agentType = (config.agent_type === 'nfd-agents' ? 'blu' : config.agent_type) || 'blu';
+	const consumer = `wordpress_${consumerType}`;
+
+	return `${wsBaseUrl}/${config.brand_id}/agents/${agentType}/v1/ws?session_id=${sessionId}&token=${encodeURIComponent(config.huapi_token)}&consumer=${encodeURIComponent(consumer)}`;
+};
+
 export const normalizeUrl = (siteUrl) => {
 	if (!siteUrl || typeof siteUrl !== 'string') {
 		return siteUrl;

@@ -33,6 +33,13 @@ class NfdAgentsChatConfigController extends WP_REST_Controller {
 	protected $rest_base = 'config';
 
 	/**
+	 * Transient key for caching the HUAPI JWT (12-hour TTL).
+	 *
+	 * @var string
+	 */
+	const TRANSIENT_KEY_JWT = 'nfd_agents_jwt';
+
+	/**
 	 * Dependency injection container.
 	 *
 	 * @var Container
@@ -126,28 +133,33 @@ class NfdAgentsChatConfigController extends WP_REST_Controller {
 		}
 
 		// Use NFD_AGENTS_CHAT_DEBUG_TOKEN if defined in wp-config.php (for local/debug when bypassing Hiive)
-		// Otherwise, fetch from Hiive API
+		// Otherwise, use cached JWT or fetch from Hiive API
 		if ( defined( 'NFD_AGENTS_CHAT_DEBUG_TOKEN' ) && ! empty( NFD_AGENTS_CHAT_DEBUG_TOKEN ) ) {
 			$huapi_token = NFD_AGENTS_CHAT_DEBUG_TOKEN;
 		} else {
-			// Fetch huapi_token from /sites/v1/customer endpoint (like PlanInfo.php)
-			$hiive_helper = new HiiveHelper( '/sites/v1/customer', array(), 'GET' );
-			$customer_data = $hiive_helper->send_request();
+			$huapi_token = get_transient( self::TRANSIENT_KEY_JWT );
 
-			if ( is_wp_error( $customer_data ) || ! isset( $customer_data['huapi_token'] ) ) {
-				return new WP_Error(
-					'huapi_token_fetch_failed',
-					__( 'Failed to fetch authentication token', 'wp-module-ai-chat' ),
-					array( 'status' => 500 )
-				);
+			if ( false === $huapi_token || '' === $huapi_token ) {
+				$hiive_helper  = new HiiveHelper( '/sites/v1/customer', array(), 'GET' );
+				$customer_data = $hiive_helper->send_request();
+
+				if ( is_wp_error( $customer_data ) || ! isset( $customer_data['huapi_token'] ) || '' === $customer_data['huapi_token'] ) {
+					return new WP_Error(
+						'huapi_token_fetch_failed',
+						__( 'Failed to fetch authentication token', 'wp-module-ai-chat' ),
+						array( 'status' => 500 )
+					);
+				}
+
+				$huapi_token = $customer_data['huapi_token'];
+				set_transient( self::TRANSIENT_KEY_JWT, $huapi_token, 12 * HOUR_IN_SECONDS );
 			}
-
-			$huapi_token = $customer_data['huapi_token'];
 		}
 
 		$site_url    = get_site_url();
 		$brand_id    = $this->get_brand_id();
 		$agent_type  = 'blu'; // Agent type (must match gateway/backend agent registry, e.g. blu)
+		$site_id     = substr( md5( get_site_url() ), 0, 8 );
 
 		return new WP_REST_Response(
 			array(
@@ -156,6 +168,7 @@ class NfdAgentsChatConfigController extends WP_REST_Controller {
 				'site_url'    => $site_url,
 				'brand_id'    => $brand_id,
 				'agent_type'  => $agent_type,
+				'site_id'     => $site_id,
 			)
 		);
 	}
