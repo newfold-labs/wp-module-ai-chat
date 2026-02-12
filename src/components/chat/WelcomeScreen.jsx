@@ -72,12 +72,13 @@ const WelcomeScreen = ({
 		showTyping && displayedLength <= titleText.length
 			? titleText.slice(0, displayedLength)
 			: titleText;
-	const displayedSubtitle =
-		!showTyping
-			? subtitleText
-			: displayedLength > titleText.length
-				? subtitleText.slice(0, displayedLength - titleText.length - 1)
-				: "";
+	// fullText is "title + space + subtitle"; the -1 below accounts for the space when slicing into subtitle.
+	let displayedSubtitle = subtitleText;
+	if (showTyping && displayedLength > titleText.length) {
+		displayedSubtitle = subtitleText.slice(0, displayedLength - titleText.length - 1);
+	} else if (showTyping) {
+		displayedSubtitle = "";
+	}
 
 	return (
 		<div className="nfd-ai-chat-welcome">
@@ -99,7 +100,7 @@ const WelcomeScreen = ({
 				<div className="nfd-ai-chat-suggestions">
 					{suggestions.map((suggestion, index) => (
 						<SuggestionButton
-							key={index}
+							key={suggestion.action ?? suggestion.text ?? index}
 							icon={suggestion.icon}
 							text={suggestion.text}
 							onClick={() => onSendMessage(suggestion.action || suggestion.text)}
