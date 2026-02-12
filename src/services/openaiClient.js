@@ -9,7 +9,6 @@
  * Configurable for use across different modules.
  */
 import OpenAI from "openai";
-import { convertWpJsonToRestRoute } from "../utils/restApi.js";
 
 const DEFAULT_MODEL = "gpt-4o-mini";
 
@@ -54,21 +53,10 @@ export class CloudflareOpenAIClient {
 
 		// Get config from WordPress localized script
 		if (typeof window !== "undefined" && window[this.configKey]) {
-			const baseUrl = window[this.configKey].homeUrl || window.location.origin;
-			let restUrl = window[this.configKey].restUrl || "/wp-json/";
-			
-			// Convert wp-json URLs to rest_route format for permalink compatibility
-			if (restUrl.includes("/wp-json/")) {
-				restUrl = convertWpJsonToRestRoute(restUrl, baseUrl);
-			} else if (!restUrl.includes("rest_route=")) {
-				// If it's not wp-json and not rest_route, assume it needs conversion
-				restUrl = convertWpJsonToRestRoute("/wp-json/", baseUrl);
-			}
-			
 			this.config = {
 				nonce: window[this.configKey].nonce,
-				restUrl: restUrl,
-				homeUrl: baseUrl,
+				restUrl: window[this.configKey].restUrl,
+				homeUrl: window[this.configKey].homeUrl,
 			};
 		} else {
 			this.config = {
