@@ -10,7 +10,7 @@
 
 import { __, sprintf } from "@wordpress/i18n";
 import apiFetch from "@wordpress/api-fetch";
-import { getRestApiBaseUrl } from "../restApi.js";
+import { buildRestApiUrl, convertWpJsonToRestRoute } from "../restApi.js";
 
 /**
  * Get base URL for the current site (origin or home URL including subdirectory).
@@ -40,6 +40,8 @@ export async function fetchAgentConfig({ configEndpoint, consumer }) {
 		// Extract REST path from configEndpoint (e.g. 'nfd-agents/chat/v1/config')
 		let path = configEndpoint;
 		let baseUrl = getBaseUrl();
+		let useWpJsonConversion = false;
+		let wpJsonBaseUrl = "";
 
 		if (configEndpoint.startsWith("http://") || configEndpoint.startsWith("https://")) {
 			const urlObj = new URL(configEndpoint);
@@ -47,26 +49,35 @@ export async function fetchAgentConfig({ configEndpoint, consumer }) {
 				path = urlObj.searchParams.get("rest_route");
 			} else if (urlObj.pathname.includes("/wp-json/")) {
 				path = urlObj.pathname.replace(/^\/wp-json\//, "").replace(/^\/wp-json/, "");
+				useWpJsonConversion = true;
+				const beforeWpJson = urlObj.pathname.split("/wp-json")[0].replace(/\/$/, "");
+				wpJsonBaseUrl = urlObj.origin + (beforeWpJson || "/");
 			} else {
 				path = urlObj.pathname.replace(/^\//, "");
 			}
 			// Base URL for rest_route: origin + pathname (without query), or path before /wp-json
-			if (urlObj.pathname.includes("/wp-json")) {
-				const beforeWpJson = urlObj.pathname.split("/wp-json")[0].replace(/\/$/, "");
-				baseUrl = urlObj.origin + (beforeWpJson || "/");
-			} else {
-				baseUrl = urlObj.origin + (urlObj.pathname || "/");
+			if (!useWpJsonConversion) {
+				if (urlObj.pathname.includes("/wp-json")) {
+					const beforeWpJson = urlObj.pathname.split("/wp-json")[0].replace(/\/$/, "");
+					baseUrl = urlObj.origin + (beforeWpJson || "/");
+				} else {
+					baseUrl = urlObj.origin + (urlObj.pathname || "/");
+				}
 			}
 		}
 
 		const cleanPath = path.replace(/^\//, "");
 
-		// Always use rest_route parameter (never wp-json) so permalinks are not required
-		const restBase = getRestApiBaseUrl(baseUrl);
-		const restRoute = restBase.includes("rest_route=")
-			? restBase.replace(/rest_route=\/?/, `rest_route=/${cleanPath}`)
-			: `${restBase}${restBase.includes("?") ? "&" : "?"}rest_route=/${cleanPath}`;
-		const url = `${restRoute}&consumer=${encodeURIComponent(consumer)}`;
+		let url;
+		if (useWpJsonConversion) {
+			url = convertWpJsonToRestRoute(configEndpoint, wpJsonBaseUrl);
+		} else {
+			const lastSlash = cleanPath.lastIndexOf("/");
+			const namespace = lastSlash === -1 ? "" : cleanPath.slice(0, lastSlash);
+			const route = lastSlash === -1 ? cleanPath : cleanPath.slice(lastSlash + 1);
+			url = buildRestApiUrl(namespace, route, baseUrl);
+		}
+		url = `${url}&consumer=${encodeURIComponent(consumer)}`;
 
 		const config = await apiFetch({
 			url,

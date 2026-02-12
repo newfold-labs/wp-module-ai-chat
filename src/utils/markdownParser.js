@@ -193,12 +193,16 @@ export function linkifyUrls(text) {
 		const normalized = fullMatch.replace(/\s+/g, "").trim();
 		let trimmed = normalized.replace(/[.,;:!?)\]]+$/, "");
 		// Strip trailing /Word when Word looks like start of next sentence (e.g. "...testing/If you"); keep the word for output
-		const sentenceStarterMatch = trimmed.match(/\/(If|It|To|We|So|Or|In|On|At|By|Do|Be|As|An|The|You)$/i);
+		const sentenceStarterMatch = trimmed.match(
+			/\/(If|It|To|We|So|Or|In|On|At|By|Do|Be|As|An|The|You)$/i
+		);
 		const wordAfterLink = sentenceStarterMatch ? sentenceStarterMatch[1] : "";
 		if (wordAfterLink) {
 			trimmed = trimmed.replace(/\/(If|It|To|We|So|Or|In|On|At|By|Do|Be|As|An|The|You)$/i, "");
 		}
-		if (!trimmed) return fullMatch;
+		if (!trimmed) {
+			return fullMatch;
+		}
 		const safeHref = trimmed.replace(/"/g, "&quot;");
 		const safeText = trimmed
 			.replace(/&/g, "&amp;")

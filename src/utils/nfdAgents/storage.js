@@ -5,11 +5,13 @@
  * and session ID. Extracted from useNfdAgentsWebSocket for reuse and testability.
  */
 
+/* global localStorage */
+
 /**
  * Check if a messages array contains at least one user message with non-empty content.
  *
  * @param {Array} msgs Messages array
- * @return {boolean}
+ * @return {boolean} True if at least one user message has non-empty content
  */
 export const hasMeaningfulUserMessage = (msgs) =>
 	Array.isArray(msgs) &&
@@ -23,7 +25,7 @@ export const hasMeaningfulUserMessage = (msgs) =>
  * @param {string} storageKey      Key for messages
  * @param {string} conversationKey Key for conversation ID
  * @param {string} sessionKey      Key for session ID
- * @return {{ messages: Array, conversationId: string|null, sessionId: string|null }}
+ * @return {{ messages: Array, conversationId: string|null, sessionId: string|null }} Restored messages and IDs, or empty defaults on failure or missing data
  */
 export const restoreChat = (storageKey, conversationKey, sessionKey) => {
 	try {

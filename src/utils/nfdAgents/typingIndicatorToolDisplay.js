@@ -48,6 +48,73 @@ export function getAbilityDetails(abilityName) {
 			title: __("Updating Site Colors", "wp-module-ai-chat"),
 			description: __("Applying new colors to global styles", "wp-module-ai-chat"),
 		},
+		"blu-get-global-styles": {
+			title: __("Reading Site Colors", "wp-module-ai-chat"),
+			description: __(
+				"Fetching current color palette and typography settings",
+				"wp-module-ai-chat"
+			),
+		},
+		"blu/get-active-global-styles": {
+			title: __("Reading Active Styles", "wp-module-ai-chat"),
+			description: __("Fetching active global styles", "wp-module-ai-chat"),
+		},
+		"blu-get-active-global-styles": {
+			title: __("Reading Active Styles", "wp-module-ai-chat"),
+			description: __("Fetching active global styles", "wp-module-ai-chat"),
+		},
+		"blu/get-active-global-styles-id": {
+			title: __("Getting Styles ID", "wp-module-ai-chat"),
+			description: __("Fetching active styles ID", "wp-module-ai-chat"),
+		},
+		"blu-get-active-global-styles-id": {
+			title: __("Getting Styles ID", "wp-module-ai-chat"),
+			description: __("Fetching active styles ID", "wp-module-ai-chat"),
+		},
+		"blu/update-global-styles": {
+			title: __("Updating Site Styles", "wp-module-ai-chat"),
+			description: __("Applying new styles to global styles", "wp-module-ai-chat"),
+		},
+		"blu-update-global-styles": {
+			title: __("Updating Site Styles", "wp-module-ai-chat"),
+			description: __("Applying new styles to global styles", "wp-module-ai-chat"),
+		},
+		"blu-update-global-palette": {
+			title: __("Updating Site Colors", "wp-module-ai-chat"),
+			description: __("Applying new colors to global styles", "wp-module-ai-chat"),
+		},
+		"blu/edit-block": {
+			title: __("Editing Block Content", "wp-module-ai-chat"),
+			description: __("Editing block content", "wp-module-ai-chat"),
+		},
+		"blu-edit-block": {
+			title: __("Editing Block Content", "wp-module-ai-chat"),
+			description: __("Editing block content", "wp-module-ai-chat"),
+		},
+		"blu/add-section": {
+			title: __("Adding New Section", "wp-module-ai-chat"),
+			description: __("Adding new section", "wp-module-ai-chat"),
+		},
+		"blu-add-section": {
+			title: __("Adding New Section", "wp-module-ai-chat"),
+			description: __("Adding new section", "wp-module-ai-chat"),
+		},
+		"blu/delete-block": {
+			title: __("Removing Block", "wp-module-ai-chat"),
+			description: __("Removing block", "wp-module-ai-chat"),
+		},
+		"blu-delete-block": {
+			title: __("Removing Block", "wp-module-ai-chat"),
+			description: __("Removing block", "wp-module-ai-chat"),
+		},
+		"blu/move-block": {
+			title: __("Moving Block", "wp-module-ai-chat"),
+			description: __("Moving block", "wp-module-ai-chat"),
+		},
+		"blu-move-block": {
+			title: __("Moving Block", "wp-module-ai-chat"),
+			description: __("Moving block", "wp-module-ai-chat"),
+		},
 		"mcp-adapter-discover-abilities": {
 			title: __("Discovering Actions", "wp-module-ai-chat"),
 			description: __("Finding available WordPress abilities", "wp-module-ai-chat"),
@@ -97,7 +164,10 @@ export function getToolDetails(toolName, args = {}) {
 		const paletteAbility =
 			abilityName === "nfd-agents/update-global-palette" ||
 			abilityName === "newfold-agents/update-global-palette" ||
-			abilityName === "blu/update-global-palette";
+			abilityName === "blu/update-global-palette" ||
+			abilityName === "blu-update-global-palette" ||
+			abilityName === "blu/update-global-styles" ||
+			abilityName === "blu-update-global-styles";
 		if (paletteAbility && args?.parameters?.colors) {
 			const colorCount = args.parameters.colors.length;
 			params = `${colorCount} color${colorCount !== 1 ? "s" : ""}`;

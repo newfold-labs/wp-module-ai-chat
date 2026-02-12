@@ -48,13 +48,6 @@ export const isLocalhost = (url) => {
 };
 
 /**
- * Normalize site URL to ensure it has a protocol
- * Adds http:// for localhost, https:// for other URLs
- *
- * @param {string} siteUrl Site URL to normalize
- * @return {string} Normalized URL with protocol
- */
-/**
  * Build the full WebSocket URL from config, session ID, and consumer type.
  * Normalizes the 'nfd-agents' agent type alias to 'blu'.
  *
@@ -75,6 +68,13 @@ export const buildWebSocketUrl = (config, sessionId, consumerType) => {
 	return `${wsBaseUrl}/${config.brand_id}/agents/${agentType}/v1/ws?session_id=${sessionId}&token=${encodeURIComponent(config.huapi_token)}&consumer=${encodeURIComponent(consumer)}`;
 };
 
+/**
+ * Normalize site URL to ensure it has a protocol.
+ * Adds http:// for localhost, https:// for other URLs.
+ *
+ * @param {string} siteUrl Site URL to normalize
+ * @return {string} Normalized URL with protocol
+ */
 export const normalizeUrl = (siteUrl) => {
 	if (!siteUrl || typeof siteUrl !== "string") {
 		return siteUrl;

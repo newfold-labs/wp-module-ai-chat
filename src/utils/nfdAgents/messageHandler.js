@@ -47,11 +47,11 @@ const clearTypingTimeout = (typingTimeoutRef) => {
 /**
  * Helper: finalize typing state after content is received.
  *
- * @param {Object} deps                    Subset of handler deps
- * @param          deps.setIsTyping
- * @param          deps.setStatus
- * @param          deps.setCurrentResponse
- * @param          deps.typingTimeoutRef
+ * @param {Object}   deps                    Subset of handler deps
+ * @param {Function} deps.setIsTyping        State setter
+ * @param {Function} deps.setStatus          State setter
+ * @param {Function} deps.setCurrentResponse State setter
+ * @param {Object}   deps.typingTimeoutRef   React ref holding the timeout ID
  */
 const finalizeTyping = ({ setIsTyping, setStatus, setCurrentResponse, typingTimeoutRef }) => {
 	setIsTyping(false);

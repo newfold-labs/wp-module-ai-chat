@@ -68,6 +68,7 @@ export const debounce = (func, wait) => {
 };
 
 export default {
+	unescapeAiResponse,
 	simpleHash,
 	generateSessionId,
 	debounce,
