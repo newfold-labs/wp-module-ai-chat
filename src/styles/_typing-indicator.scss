@@ -47,6 +47,14 @@
 	min-width: 0;
 }
 
+.nfd-ai-chat-typing-indicator__reasoning {
+	font-size: var(--nfd-ai-chat-font-size-sm);
+	color: var(--nfd-ai-chat-color-grey-medium);
+	font-style: italic;
+	line-height: 1.4;
+	margin-top: 4px;
+}
+
 @keyframes nfd-ai-chat-spin {
 
 	from {

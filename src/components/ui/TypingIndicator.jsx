@@ -67,14 +67,23 @@ const getAbilityDetails = (abilityName) => {
 		},
 	};
 
-	return (
-		abilityMap[abilityName] || {
-			title:
-				abilityName?.replace(/[-_\/]/g, " ").replace(/\b\w/g, (l) => l.toUpperCase()) ||
-				__("Executing", "wp-module-ai-chat"),
-			description: __("Running action", "wp-module-ai-chat"),
-		}
-	);
+	if (abilityMap[abilityName]) {
+		return abilityMap[abilityName];
+	}
+
+	if (abilityName === "preparing-changes") {
+		return {
+			title: __("Preparing changes", "wp-module-ai-chat"),
+			description: __("Building block markup", "wp-module-ai-chat"),
+		};
+	}
+
+	return {
+		title:
+			abilityName?.replace(/[-_\/]/g, " ").replace(/\b\w/g, (l) => l.toUpperCase()) ||
+			__("Executing", "wp-module-ai-chat"),
+		description: __("Running action", "wp-module-ai-chat"),
+	};
 };
 
 /**
@@ -175,12 +184,13 @@ const ToolExecutionItem = ({ tool, isActive, progress, isComplete, isError }) =>
  *
  * Displays an animated typing indicator with spinner and real-time progress.
  *
- * @param {Object} props                - The component props.
- * @param {string} props.status         - The current status.
- * @param {Object} props.activeToolCall - The currently executing tool call.
- * @param {string} props.toolProgress   - Real-time progress message.
- * @param {Array}  props.executedTools  - List of already executed tools.
- * @param {Array}  props.pendingTools   - List of pending tools to execute.
+ * @param {Object} props                  - The component props.
+ * @param {string} props.status           - The current status.
+ * @param {Object} props.activeToolCall   - The currently executing tool call.
+ * @param {string} props.toolProgress     - Real-time progress message.
+ * @param {Array}  props.executedTools    - List of already executed tools.
+ * @param {Array}  props.pendingTools     - List of pending tools to execute.
+ * @param {string} props.reasoningContent - The reasoning content.
  * @return {JSX.Element} The TypingIndicator component.
  */
 const TypingIndicator = ({
@@ -189,13 +199,17 @@ const TypingIndicator = ({
 	toolProgress = null,
 	executedTools = [],
 	pendingTools = [],
+	reasoningContent = "",
 }) => {
 	const [isExpanded, setIsExpanded] = useState(true);
 	const isExecuting = !!activeToolCall;
+	const isBetweenBatches = !isExecuting && status === "summarizing" && executedTools.length > 0;
 
 	useEffect(() => {
-		setIsExpanded(isExecuting);
-	}, [isExecuting]);
+		if (isExecuting || isBetweenBatches) {
+			setIsExpanded(true);
+		}
+	}, [isExecuting, isBetweenBatches]);
 
 	/** Status key → user-facing label (single place for copy; i18n-ready) */
 	const STATUS_LABELS = {
@@ -218,6 +232,39 @@ const TypingIndicator = ({
 	const hasToolActivity = activeToolCall || executedTools.length > 0 || pendingTools.length > 0;
 	const totalTools = executedTools.length + (activeToolCall ? 1 : 0) + pendingTools.length;
 
+	const renderHeaderLabel = () => {
+		if (isExecuting) {
+			return (
+				<>
+					<span>{__("Executing actions", "wp-module-ai-chat")}</span>
+					{activeToolCall.total > 1 && (
+						<span className="nfd-ai-chat-tool-execution__header-count">
+							({activeToolCall.index}/{activeToolCall.total})
+						</span>
+					)}
+				</>
+			);
+		}
+		if (isBetweenBatches) {
+			return (
+				<>
+					<Loader2
+						className="nfd-ai-chat-tool-execution__icon nfd-ai-chat-tool-execution__icon--active"
+						size={12}
+					/>
+					<span>{__("Processing", "wp-module-ai-chat")}</span>
+					<span className="nfd-ai-chat-tool-execution__header-count">({executedTools.length})</span>
+				</>
+			);
+		}
+		return (
+			<>
+				<span>{__("Actions completed", "wp-module-ai-chat")}</span>
+				<span className="nfd-ai-chat-tool-execution__header-count">({totalTools})</span>
+			</>
+		);
+	};
+
 	if (hasToolActivity) {
 		return (
 			<div className="nfd-ai-chat-message nfd-ai-chat-message--assistant">
@@ -239,21 +286,7 @@ const TypingIndicator = ({
 								<ChevronRight className="nfd-ai-chat-tool-execution__chevron" size={12} />
 							)}
 
-							{isExecuting ? (
-								<>
-									<span>{__("Executing actions", "wp-module-ai-chat")}</span>
-									{activeToolCall.total > 1 && (
-										<span className="nfd-ai-chat-tool-execution__header-count">
-											({activeToolCall.index}/{activeToolCall.total})
-										</span>
-									)}
-								</>
-							) : (
-								<>
-									<span>{__("Actions completed", "wp-module-ai-chat")}</span>
-									<span className="nfd-ai-chat-tool-execution__header-count">({totalTools})</span>
-								</>
-							)}
+							{renderHeaderLabel()}
 						</button>
 
 						{isExpanded && (
@@ -277,6 +310,17 @@ const TypingIndicator = ({
 										isComplete={false}
 										isError={false}
 										progress={toolProgress}
+									/>
+								)}
+
+								{isBetweenBatches && (
+									<ToolExecutionItem
+										key="preparing"
+										tool={{ name: "preparing-changes" }}
+										isActive={true}
+										isComplete={false}
+										isError={false}
+										progress={null}
 									/>
 								)}
 
@@ -307,6 +351,9 @@ const TypingIndicator = ({
 					</span>
 					<span className="nfd-ai-chat-typing-indicator__text">{getStatusText()}</span>
 				</div>
+				{reasoningContent && (
+					<div className="nfd-ai-chat-typing-indicator__reasoning">{reasoningContent}</div>
+				)}
 			</div>
 		</div>
 	);

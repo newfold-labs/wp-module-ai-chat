@@ -148,14 +148,25 @@ export class CloudflareOpenAIClient {
 				...request,
 				messages: request.messages,
 				stream: true,
+				stream_options: { include_usage: true },
 				mode: request.mode || this.mode,
 			});
 
 			let fullMessage = "";
+			let usage = null;
 			const toolCallsInProgress = {};
+
+			let finishReason = null;
 
 			for await (const chunk of stream) {
 				const delta = chunk.choices[0]?.delta;
+
+				if (delta?.reasoning) {
+					onChunk({
+						type: "reasoning",
+						content: delta.reasoning,
+					});
+				}
 
 				if (delta?.content) {
 					fullMessage += delta.content;
@@ -201,17 +212,38 @@ export class CloudflareOpenAIClient {
 				}
 
 				if (chunk.choices[0]?.finish_reason) {
-					// Convert tool calls to final format
-					const finalToolCalls = Object.values(toolCallsInProgress).map((tc) => ({
-						id: tc.id,
-						name: tc.function.name,
-						arguments: tc.function.arguments ? JSON.parse(tc.function.arguments) : {},
-					}));
-
-					// Await onComplete in case it's async
-					await onComplete(fullMessage, finalToolCalls.length > 0 ? finalToolCalls : null);
-					break;
+					finishReason = chunk.choices[0].finish_reason;
 				}
+
+				// Usage arrives in a separate final chunk after finish_reason
+				if (chunk.usage) {
+					usage = chunk.usage;
+					console.log(
+						`[Token Usage] prompt: ${usage.prompt_tokens} | completion: ${usage.completion_tokens} | total: ${usage.total_tokens}`
+					);
+				}
+			}
+
+			// Fallback: SDK stores usage on the stream object after iteration
+			if (!usage && stream.usage) {
+				usage = stream.usage;
+			}
+
+			if (usage) {
+				console.log(
+					`[Token Usage] prompt: ${usage.prompt_tokens} | completion: ${usage.completion_tokens} | total: ${usage.total_tokens}`
+				);
+			}
+
+			// Stream ended — call onComplete with collected data
+			if (finishReason) {
+				const finalToolCalls = Object.values(toolCallsInProgress).map((tc) => ({
+					id: tc.id,
+					name: tc.function.name,
+					arguments: tc.function.arguments ? JSON.parse(tc.function.arguments) : {},
+				}));
+
+				await onComplete(fullMessage, finalToolCalls.length > 0 ? finalToolCalls : null, usage);
 			}
 		} catch (error) {
 			onError(
@@ -222,6 +254,7 @@ export class CloudflareOpenAIClient {
 
 	/**
 	 * Convert chat messages to OpenAI format
+	 * Optimizes token usage by truncating assistant content and summarizing tool results
 	 *
 	 * @param {Array} messages Array of chat messages
 	 * @return {Array} OpenAI formatted messages
@@ -246,9 +279,15 @@ export class CloudflareOpenAIClient {
 					continue;
 				}
 
+				// Truncate assistant content when tool calls present to save tokens
+				let content = message.content ?? "";
+				if (hasToolCalls && content.length > 200) {
+					content = content.substring(0, 200) + "...";
+				}
+
 				const assistantMessage = {
 					role: "assistant",
-					content: hasToolCalls ? (message.content ?? null) : (message.content ?? ""),
+					content: hasToolCalls ? content || null : content,
 				};
 
 				if (hasToolCalls) {
@@ -267,14 +306,16 @@ export class CloudflareOpenAIClient {
 
 				openaiMessages.push(assistantMessage);
 
-				// Add tool results if present
+				// Add summarized tool results if present (save tokens by only sending status)
 				if (hasToolCalls && message.toolResults && message.toolResults.length > 0) {
 					for (const result of message.toolResults) {
 						const hasMatchingCall = message.toolCalls.some((call) => call.id === result.id);
 						if (hasMatchingCall) {
+							// Summarize result to save tokens - just status, not full content
+							const summary = result.error ? `Error: ${result.error.substring(0, 100)}` : "Success";
 							openaiMessages.push({
 								role: "tool",
-								content: result.error || JSON.stringify(result.result),
+								content: summary,
 								tool_call_id: result.id,
 							});
 						}
@@ -341,8 +382,8 @@ export class CloudflareOpenAIClient {
 			messages,
 			tools: tools.length > 0 ? this.convertMCPToolsToOpenAI(tools) : undefined,
 			tool_choice: tools.length > 0 ? "auto" : undefined,
-			temperature: 0.7,
-			max_tokens: 2000,
+			temperature: 0.1,
+			max_tokens: 4000,
 		};
 
 		try {

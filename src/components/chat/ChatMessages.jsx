@@ -129,6 +129,7 @@ const ChatMessages = ({
 					toolProgress={toolProgress}
 					executedTools={hasActiveToolExecution ? executedTools : []}
 					pendingTools={pendingTools}
+					reasoningContent={reasoningContent}
 				/>
 			)}
 		</div>

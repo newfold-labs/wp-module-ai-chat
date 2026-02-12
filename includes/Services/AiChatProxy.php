@@ -20,6 +20,14 @@ use WP_Error;
 class AiChatProxy {
 
 	/**
+	 * Whether a streaming response is currently active.
+	 * Used by the shutdown handler to detect fatal errors during streaming.
+	 *
+	 * @var bool
+	 */
+	private $streaming_active = false;
+
+	/**
 	 * Production base URL for the AI proxy
 	 *
 	 * @var string
@@ -122,6 +130,14 @@ class AiChatProxy {
 			$body['temperature'] = (float) $request_data['temperature'];
 		}
 
+		if ( isset( $request_data['max_completion_tokens'] ) ) {
+			$body['max_completion_tokens'] = (int) $request_data['max_completion_tokens'];
+		}
+
+		if ( isset( $request_data['stream_options'] ) ) {
+			$body['stream_options'] = $request_data['stream_options'];
+		}
+
 		$response = wp_remote_post(
 			$config['url'],
 			array(
@@ -193,6 +209,14 @@ class AiChatProxy {
 			$body['temperature'] = (float) $request_data['temperature'];
 		}
 
+		if ( isset( $request_data['max_completion_tokens'] ) ) {
+			$body['max_completion_tokens'] = (int) $request_data['max_completion_tokens'];
+		}
+
+		if ( isset( $request_data['stream_options'] ) ) {
+			$body['stream_options'] = $request_data['stream_options'];
+		}
+
 		// Set up streaming headers
 		$this->setup_streaming_headers();
 
@@ -226,6 +250,19 @@ class AiChatProxy {
 	 * @return void
 	 */
 	private function make_streaming_request( array $config, array $body ) {
+		// Raise memory limit for streaming — large block markup responses need headroom.
+		// phpcs:ignore WordPress.PHP.IniSet.memory_limit_Disallowed
+		@ini_set( 'memory_limit', '512M' );
+
+		// Extend execution time — complex page edits can produce long AI responses.
+		// phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged
+		@set_time_limit( 300 );
+
+		// Register a shutdown handler so PHP fatal errors produce a clean SSE
+		// error event instead of dumping an HTML error page into the stream.
+		$this->streaming_active = true;
+		register_shutdown_function( array( $this, 'handle_streaming_shutdown' ) );
+
 		// phpcs:ignore WordPress.WP.AlternativeFunctions.curl_curl_init
 		$ch = curl_init( $config['url'] );
 
@@ -265,6 +302,8 @@ class AiChatProxy {
 		// phpcs:ignore WordPress.WP.AlternativeFunctions.curl_curl_close
 		curl_close( $ch );
 
+		$this->streaming_active = false;
+
 		// Send final done event
 		echo "data: [DONE]\n\n";
 
@@ -282,6 +321,19 @@ class AiChatProxy {
 	 * @return int Number of bytes handled
 	 */
 	public function handle_stream_chunk( $ch, $data ) {
+		// Guard against non-SSE data leaking into the stream (e.g. HTML error
+		// pages from the upstream proxy or PHP itself). Detect full HTML pages,
+		// Symfony/Laravel error handler output, and PHP fatal error text.
+		if ( preg_match( '/<!DOCTYPE|<html|sf-dump|<style|Fatal\s+Error|Maximum execution time/i', $data ) ) {
+			// Extract a useful error snippet from the HTML.
+			$snippet = strip_tags( $data );
+			$snippet = preg_replace( '/\s+/', ' ', trim( $snippet ) );
+			$snippet = substr( $snippet, 0, 200 );
+			$this->send_error_event( 'Upstream error: ' . $snippet );
+			// Return the full length so cURL considers the chunk consumed.
+			return strlen( $data );
+		}
+
 		// Forward the data as-is (it's already in SSE format)
 		echo $data;
 
@@ -300,6 +352,59 @@ class AiChatProxy {
 	 * @return void
 	 */
 	private function send_error_event( string $message ) {
+		$error_data = wp_json_encode(
+			array(
+				'error' => array(
+					'message' => $message,
+				),
+			)
+		);
+
+		// Terminate any previously flushed incomplete SSE data line.
+		// Without this, the error event would be concatenated with a partial
+		// "data: {...}" line that was already sent to the client, producing
+		// unparseable JSON.
+		echo "\n\n";
+		echo "data: {$error_data}\n\n";
+		echo "data: [DONE]\n\n";
+
+		if ( ob_get_level() > 0 ) {
+			ob_flush();
+		}
+		flush();
+	}
+
+	/**
+	 * Shutdown handler for streaming requests.
+	 *
+	 * Catches PHP fatal errors that occur during streaming and sends a clean
+	 * SSE error event instead of letting raw HTML error output corrupt the
+	 * event stream.
+	 *
+	 * @return void
+	 */
+	public function handle_streaming_shutdown() {
+		if ( ! $this->streaming_active ) {
+			return;
+		}
+
+		$error = error_get_last();
+		if ( null === $error || ! in_array( $error['type'], array( E_ERROR, E_CORE_ERROR, E_COMPILE_ERROR, E_PARSE ), true ) ) {
+			return;
+		}
+
+		// Clean any partial output that may have been buffered.
+		while ( ob_get_level() > 0 ) {
+			ob_end_clean();
+		}
+
+		$message = sprintf(
+			'PHP Fatal Error: %s in %s on line %d',
+			$error['message'],
+			basename( $error['file'] ),
+			$error['line']
+		);
+
 		$error_data = wp_json_encode(
 			array(
 				'error' => array(
