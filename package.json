@@ -20,6 +20,9 @@
 		"@wordpress/api-fetch": "^6.0.0",
 		"react": "^18.0.0"
 	},
+	"overrides": {
+		"doctrine": "2.1.0"
+	},
 	"devDependencies": {
 		"@wordpress/eslint-plugin": "^22.18.0",
 		"@wordpress/prettier-config": "^4.32.0",
