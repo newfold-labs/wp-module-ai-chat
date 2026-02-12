@@ -3,7 +3,7 @@
  *
  * Connects via WebSocket, handles message streaming and reconnection.
  * Used by Help Center, Editor Chat, and other AI chat UIs.
- * Delegates to: messageHandler, configFetcher, storageUtils, urlUtils.
+ * Delegates to: messageHandler, configFetcher, storage, url.
  */
 
 /* global WebSocket localStorage sessionStorage */
@@ -18,7 +18,7 @@ import {
 	migrateStorageKeys,
 	getChatHistoryStorageKeys,
 } from "../constants/nfdAgents/storageKeys";
-import { buildWebSocketUrl } from "../utils/nfdAgents/urlUtils";
+import { buildWebSocketUrl } from "../utils/nfdAgents/url";
 import { createMessageHandler } from "../utils/nfdAgents/messageHandler";
 import { fetchAgentConfig } from "../utils/nfdAgents/configFetcher";
 import {
@@ -27,7 +27,7 @@ import {
 	persistConversationId,
 	clearChatStorage,
 	hasMeaningfulUserMessage,
-} from "../utils/nfdAgents/storageUtils";
+} from "../utils/nfdAgents/storage";
 import { generateSessionId } from "../utils/helpers";
 
 /**

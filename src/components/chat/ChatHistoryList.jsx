@@ -14,7 +14,7 @@ import {
 	hasMeaningfulUserMessage,
 	extractConversations,
 	getLatestMessageTime,
-} from "../../utils/nfdAgents/chatHistoryListUtils";
+} from "../../utils/nfdAgents/chatHistoryList";
 
 const DEFAULT_MAX_HISTORY_ITEMS = 3;
 

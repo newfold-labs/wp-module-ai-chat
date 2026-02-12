@@ -14,18 +14,15 @@
 export const hasMeaningfulUserMessage = (msgs) =>
 	Array.isArray(msgs) &&
 	msgs.some(
-		(m) =>
-			(m.role === 'user' || m.type === 'user') &&
-			m.content &&
-			String(m.content).trim()
+		(m) => (m.role === "user" || m.type === "user") && m.content && String(m.content).trim()
 	);
 
 /**
  * Restore chat history, conversation ID, and session ID from localStorage.
  *
- * @param {string} storageKey       Key for messages
- * @param {string} conversationKey  Key for conversation ID
- * @param {string} sessionKey       Key for session ID
+ * @param {string} storageKey      Key for messages
+ * @param {string} conversationKey Key for conversation ID
+ * @param {string} sessionKey      Key for session ID
  * @return {{ messages: Array, conversationId: string|null, sessionId: string|null }}
  */
 export const restoreChat = (storageKey, conversationKey, sessionKey) => {
@@ -51,7 +48,7 @@ export const restoreChat = (storageKey, conversationKey, sessionKey) => {
 		}
 	} catch (err) {
 		// eslint-disable-next-line no-console
-		console.warn('[AI Chat] Failed to restore chat history from localStorage:', err);
+		console.warn("[AI Chat] Failed to restore chat history from localStorage:", err);
 	}
 	return { messages: [], conversationId: null, sessionId: null };
 };
@@ -71,7 +68,7 @@ export const persistMessages = (storageKey, messages) => {
 		}
 	} catch (err) {
 		// eslint-disable-next-line no-console
-		console.warn('[AI Chat] Failed to save messages to localStorage:', err);
+		console.warn("[AI Chat] Failed to save messages to localStorage:", err);
 	}
 };
 
@@ -90,16 +87,16 @@ export const persistConversationId = (conversationKey, conversationId) => {
 		}
 	} catch (err) {
 		// eslint-disable-next-line no-console
-		console.warn('[AI Chat] Failed to save conversation ID to localStorage:', err);
+		console.warn("[AI Chat] Failed to save conversation ID to localStorage:", err);
 	}
 };
 
 /**
  * Clear all chat-related keys from localStorage.
  *
- * @param {string} storageKey       Key for messages
- * @param {string} conversationKey  Key for conversation ID
- * @param {string} sessionKey       Key for session ID
+ * @param {string} storageKey      Key for messages
+ * @param {string} conversationKey Key for conversation ID
+ * @param {string} sessionKey      Key for session ID
  */
 export const clearChatStorage = (storageKey, conversationKey, sessionKey) => {
 	try {
@@ -108,6 +105,6 @@ export const clearChatStorage = (storageKey, conversationKey, sessionKey) => {
 		localStorage.removeItem(sessionKey);
 	} catch (err) {
 		// eslint-disable-next-line no-console
-		console.warn('[AI Chat] Failed to clear chat storage:', err);
+		console.warn("[AI Chat] Failed to clear chat storage:", err);
 	}
 };

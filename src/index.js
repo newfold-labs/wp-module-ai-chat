@@ -30,8 +30,8 @@ export {
 	normalizeUrl,
 	isLocalhost,
 	buildWebSocketUrl,
-} from "./utils/nfdAgents/urlUtils";
-export { isInitialGreeting } from "./utils/nfdAgents/greetingUtils";
+} from "./utils/nfdAgents/url";
+export { isInitialGreeting } from "./utils/nfdAgents/greeting";
 
 // Constants
 export { NFD_AGENTS_WEBSOCKET } from "./constants/nfdAgents/websocket";

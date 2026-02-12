@@ -5,24 +5,24 @@
  * Factory returns a handleMessage(data) function wired to the hook's state setters and refs.
  */
 
-import { getStatusForEventType } from '../../constants/nfdAgents/typingStatus';
-import { isInitialGreeting } from './greetingUtils';
+import { getStatusForEventType } from "../../constants/nfdAgents/typingStatus";
+import { isInitialGreeting } from "./greeting";
 
 /**
  * Helper: extract and filter a message string from a WebSocket payload.
  * Returns null when the content should be suppressed (system noise, empty, filtered greeting).
  *
- * @param {string|undefined} raw             Raw message string
- * @param {boolean}          hasUserMessage   Whether user has sent a message yet
+ * @param {string|undefined} raw            Raw message string
+ * @param {boolean}          hasUserMessage Whether user has sent a message yet
  * @return {string|null} Cleaned message or null to suppress
  */
 const filterMessage = (raw, hasUserMessage) => {
 	const trimmed = raw?.trim();
 	if (
 		!trimmed ||
-		trimmed === 'No content provided' ||
-		trimmed === 'sales_requested' ||
-		trimmed.toLowerCase() === 'sales_requested'
+		trimmed === "No content provided" ||
+		trimmed === "sales_requested" ||
+		trimmed.toLowerCase() === "sales_requested"
 	) {
 		return null;
 	}
@@ -47,29 +47,33 @@ const clearTypingTimeout = (typingTimeoutRef) => {
 /**
  * Helper: finalize typing state after content is received.
  *
- * @param {Object} deps Subset of handler deps
+ * @param {Object} deps                    Subset of handler deps
+ * @param          deps.setIsTyping
+ * @param          deps.setStatus
+ * @param          deps.setCurrentResponse
+ * @param          deps.typingTimeoutRef
  */
 const finalizeTyping = ({ setIsTyping, setStatus, setCurrentResponse, typingTimeoutRef }) => {
 	setIsTyping(false);
 	setStatus(null);
-	setCurrentResponse('');
+	setCurrentResponse("");
 	clearTypingTimeout(typingTimeoutRef);
 };
 
 /**
  * Helper: create and append an assistant message to state.
  *
- * @param {Function} setMessages  State setter
- * @param {string}   content      Message content
- * @param {string}   [idSuffix]   Optional suffix for message ID
+ * @param {Function} setMessages State setter
+ * @param {string}   content     Message content
+ * @param {string}   [idSuffix]  Optional suffix for message ID
  */
-const addAssistantMsg = (setMessages, content, idSuffix = '') => {
+const addAssistantMsg = (setMessages, content, idSuffix = "") => {
 	setMessages((prev) => [
 		...prev,
 		{
 			id: `msg-${Date.now()}${idSuffix}`,
-			role: 'assistant',
-			type: 'assistant',
+			role: "assistant",
+			type: "assistant",
 			content,
 			timestamp: new Date(),
 			animateTyping: true,
@@ -80,19 +84,19 @@ const addAssistantMsg = (setMessages, content, idSuffix = '') => {
 /**
  * Create a WebSocket message handler wired to the hook's state.
  *
- * @param {Object} deps Dependencies from the hook
- * @param {Object} deps.isStoppedRef           Ref — skip messages after stop
- * @param {Object} deps.hasUserMessageRef      Ref — controls greeting filtering
- * @param {Object} deps.typingTimeoutRef       Ref — typing indicator timeout
- * @param {number} deps.typingTimeout          TYPING_TIMEOUT constant
- * @param {Function} deps.setIsTyping          State setter
- * @param {Function} deps.setStatus            State setter
- * @param {Function} deps.setCurrentResponse   State setter
- * @param {Function} deps.setMessages          State setter
- * @param {Function} deps.setConversationId    State setter
- * @param {Function} deps.setError             State setter
- * @param {Function} deps.saveSessionId        callback(sessionId) — persist to ref + localStorage
- * @param {Function} deps.saveConversationId   callback(id) — persist to localStorage
+ * @param {Object}   deps                    Dependencies from the hook
+ * @param {Object}   deps.isStoppedRef       Ref — skip messages after stop
+ * @param {Object}   deps.hasUserMessageRef  Ref — controls greeting filtering
+ * @param {Object}   deps.typingTimeoutRef   Ref — typing indicator timeout
+ * @param {number}   deps.typingTimeout      TYPING_TIMEOUT constant
+ * @param {Function} deps.setIsTyping        State setter
+ * @param {Function} deps.setStatus          State setter
+ * @param {Function} deps.setCurrentResponse State setter
+ * @param {Function} deps.setMessages        State setter
+ * @param {Function} deps.setConversationId  State setter
+ * @param {Function} deps.setError           State setter
+ * @param {Function} deps.saveSessionId      callback(sessionId) — persist to ref + localStorage
+ * @param {Function} deps.saveConversationId callback(id) — persist to localStorage
  * @return {Function} handleMessage(data) — call with parsed JSON from ws.onmessage
  */
 export function createMessageHandler(deps) {
@@ -113,12 +117,12 @@ export function createMessageHandler(deps) {
 
 	return function handleMessage(data) {
 		// If user has stopped generation, ignore all messages except session_established
-		if (isStoppedRef.current && data.type !== 'session_established') {
+		if (isStoppedRef.current && data.type !== "session_established") {
 			return;
 		}
 
 		// --- session_established ---
-		if (data.type === 'session_established') {
+		if (data.type === "session_established") {
 			if (data.session_id) {
 				saveSessionId(data.session_id);
 			}
@@ -126,28 +130,28 @@ export function createMessageHandler(deps) {
 		}
 
 		// --- typing_start ---
-		if (data.type === 'typing_start') {
+		if (data.type === "typing_start") {
 			setIsTyping(true);
-			setStatus(getStatusForEventType('typing_start'));
+			setStatus(getStatusForEventType("typing_start"));
 			clearTypingTimeout(typingTimeoutRef);
 			return;
 		}
 
 		// --- typing_stop ---
-		if (data.type === 'typing_stop') {
+		if (data.type === "typing_stop") {
 			setIsTyping(false);
 			setStatus(null);
-			setCurrentResponse('');
+			setCurrentResponse("");
 			clearTypingTimeout(typingTimeoutRef);
 			return;
 		}
 
 		// --- streaming_chunk / chunk ---
-		if (data.type === 'streaming_chunk' || data.type === 'chunk') {
+		if (data.type === "streaming_chunk" || data.type === "chunk") {
 			if (isStoppedRef.current) {
 				return;
 			}
-			const content = data.content || data.chunk || data.text || '';
+			const content = data.content || data.chunk || data.text || "";
 			if (content) {
 				setCurrentResponse((prev) => {
 					const newContent = prev + content;
@@ -156,7 +160,7 @@ export function createMessageHandler(deps) {
 						newContent.length < 100 &&
 						isInitialGreeting(newContent)
 					) {
-						return '';
+						return "";
 					}
 					setIsTyping(true);
 					if (typingTimeoutRef.current) {
@@ -174,13 +178,17 @@ export function createMessageHandler(deps) {
 		}
 
 		// --- structured_output ---
-		if (data.type === 'structured_output') {
+		if (data.type === "structured_output") {
 			const humanInputRequest = data.response_content?.content?.human_input_request;
 
 			if (humanInputRequest) {
-				const inputType = (humanInputRequest.input_type || humanInputRequest.inputType || '').toUpperCase();
+				const inputType = (
+					humanInputRequest.input_type ||
+					humanInputRequest.inputType ||
+					""
+				).toUpperCase();
 
-				if (inputType === 'APPROVAL_REQUEST') {
+				if (inputType === "APPROVAL_REQUEST") {
 					if (data.conversation_id || data.conversationId) {
 						const newConversationId = data.conversation_id || data.conversationId;
 						setConversationId(newConversationId);
@@ -197,9 +205,9 @@ export function createMessageHandler(deps) {
 				// Finalize any current streaming response first
 				setCurrentResponse((prev) => {
 					if (prev) {
-						addAssistantMsg(setMessages, prev, '-streaming');
+						addAssistantMsg(setMessages, prev, "-streaming");
 					}
-					return '';
+					return "";
 				});
 
 				addAssistantMsg(setMessages, filtered);
@@ -209,14 +217,14 @@ export function createMessageHandler(deps) {
 		}
 
 		// --- tool_call ---
-		if (data.type === 'tool_call') {
-			setStatus(getStatusForEventType('tool_call'));
+		if (data.type === "tool_call") {
+			setStatus(getStatusForEventType("tool_call"));
 			return;
 		}
 
 		// --- tool_result ---
-		if (data.type === 'tool_result') {
-			setStatus(getStatusForEventType('tool_result'));
+		if (data.type === "tool_result") {
+			setStatus(getStatusForEventType("tool_result"));
 			if (data.conversation_id || data.conversationId) {
 				const newConversationId = data.conversation_id || data.conversationId;
 				setConversationId(newConversationId);
@@ -226,31 +234,27 @@ export function createMessageHandler(deps) {
 		}
 
 		// --- message / complete ---
-		if (data.type === 'message' || data.type === 'complete') {
+		if (data.type === "message" || data.type === "complete") {
 			let hasContent = false;
 			setCurrentResponse((prev) => {
 				if (prev) {
 					const trimmedContent = prev.trim();
 					if (
-						trimmedContent === 'No content provided' ||
-						trimmedContent === 'sales_requested' ||
-						trimmedContent.toLowerCase() === 'sales_requested'
+						trimmedContent === "No content provided" ||
+						trimmedContent === "sales_requested" ||
+						trimmedContent.toLowerCase() === "sales_requested"
 					) {
-						return '';
+						return "";
 					}
-					if (
-						!hasUserMessageRef.current &&
-						prev.length < 150 &&
-						isInitialGreeting(prev)
-					) {
-						return '';
+					if (!hasUserMessageRef.current && prev.length < 150 && isInitialGreeting(prev)) {
+						return "";
 					}
 					setMessages((prevMessages) => [
 						...prevMessages,
 						{
 							id: `msg-${Date.now()}`,
-							role: 'assistant',
-							type: 'assistant',
+							role: "assistant",
+							type: "assistant",
 							content: prev,
 							timestamp: new Date(),
 							animateTyping: true,
@@ -258,7 +262,7 @@ export function createMessageHandler(deps) {
 					]);
 					hasContent = true;
 				}
-				return '';
+				return "";
 			});
 
 			if (!hasContent) {
@@ -277,19 +281,19 @@ export function createMessageHandler(deps) {
 		}
 
 		// --- handoff_accept ---
-		if (data.type === 'handoff_accept') {
-			setStatus(getStatusForEventType('handoff_accept'));
+		if (data.type === "handoff_accept") {
+			setStatus(getStatusForEventType("handoff_accept"));
 			return;
 		}
 
 		// --- handoff_request ---
-		if (data.type === 'handoff_request') {
-			setStatus(getStatusForEventType('handoff_request'));
+		if (data.type === "handoff_request") {
+			setStatus(getStatusForEventType("handoff_request"));
 			const messageContent = data.message || data.response_content?.message;
 			const filtered = filterMessage(messageContent, hasUserMessageRef.current);
 
 			if (!filtered) {
-				setCurrentResponse('');
+				setCurrentResponse("");
 				return;
 			}
 
@@ -299,11 +303,11 @@ export function createMessageHandler(deps) {
 		}
 
 		// --- error ---
-		if (data.type === 'error') {
-			setError(data.message || data.error || 'An error occurred');
+		if (data.type === "error") {
+			setError(data.message || data.error || "An error occurred");
 			setIsTyping(false);
 			setStatus(null);
-			setCurrentResponse('');
+			setCurrentResponse("");
 			return;
 		}
 
@@ -313,7 +317,7 @@ export function createMessageHandler(deps) {
 			const filtered = filterMessage(messageContent, hasUserMessageRef.current);
 
 			if (!filtered) {
-				setCurrentResponse('');
+				setCurrentResponse("");
 				return;
 			}
 
