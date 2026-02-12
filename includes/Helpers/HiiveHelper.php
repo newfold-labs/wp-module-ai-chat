@@ -6,7 +6,6 @@ use NewfoldLabs\WP\Module\Data\HiiveConnection;
 
 /**
  * Helper class for interacting with Hiive APIs.
- * 
  */
 class HiiveHelper {
 	/**
@@ -107,10 +106,10 @@ class HiiveHelper {
 		}
 
 		$response_body = wp_remote_retrieve_body( $response );
-		
+
 		// Decode JSON response
 		$decoded = json_decode( $response_body, true );
-		
+
 		// Return decoded data if valid JSON, otherwise return raw body
 		return json_last_error() === JSON_ERROR_NONE ? $decoded : $response_body;
 	}

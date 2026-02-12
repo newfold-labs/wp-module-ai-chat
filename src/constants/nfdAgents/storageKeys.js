@@ -38,14 +38,14 @@ export const setSiteId = (id) => {
  *
  * @param {string} oldSiteId Previous site ID ('' for pre-migration keys)
  * @param {string} newSiteId New site ID from config
- * @param {string} namespace Storage namespace (e.g. 'help_center')
+ * @param {string} consumer Consumer identifier (must match useNfdAgentsWebSocket for same surface)
  */
-export const migrateStorageKeys = (oldSiteId, newSiteId, namespace) => {
+export const migrateStorageKeys = (oldSiteId, newSiteId, consumer) => {
 	const suffixes = ['history', 'conversation-id', 'session-id', 'archive'];
 	const oldPrefix = oldSiteId
-		? `nfd-ai-chat-${oldSiteId}-${namespace}`
-		: `nfd-ai-chat-${namespace}`;
-	const newPrefix = `nfd-ai-chat-${newSiteId}-${namespace}`;
+		? `nfd-ai-chat-${oldSiteId}-${consumer}`
+		: `nfd-ai-chat-${consumer}`;
+	const newPrefix = `nfd-ai-chat-${newSiteId}-${consumer}`;
 
 	try {
 		for (const suffix of suffixes) {
@@ -65,18 +65,18 @@ export const migrateStorageKeys = (oldSiteId, newSiteId, namespace) => {
 };
 
 /**
- * Get localStorage keys for chat history and archive for a given storage namespace.
+ * Get localStorage keys for chat history and archive for a given consumer.
  * Includes the cached site ID in the key prefix for multisite isolation.
  * Must match the keys used in useNfdAgentsWebSocket for the same consumer.
  *
- * @param {string} storageNamespace - e.g. 'help_center', 'editor_chat'
+ * @param {string} consumer - Consumer identifier (must match useNfdAgentsWebSocket for same surface)
  * @return {{ history: string, conversationId: string, sessionId: string, archive: string }}
  */
-export const getChatHistoryStorageKeys = (storageNamespace) => {
+export const getChatHistoryStorageKeys = (consumer) => {
 	const siteId = getSiteId();
 	const prefix = siteId
-		? `nfd-ai-chat-${siteId}-${storageNamespace}`
-		: `nfd-ai-chat-${storageNamespace}`;
+		? `nfd-ai-chat-${siteId}-${consumer}`
+		: `nfd-ai-chat-${consumer}`;
 	return {
 		history: `${prefix}-history`,
 		conversationId: `${prefix}-conversation-id`,

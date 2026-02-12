@@ -2,48 +2,74 @@
  * NFD Agents Config Fetcher
  *
  * Fetches agent configuration from the REST API endpoint.
+ * Always uses rest_route parameter for REST API calls (never wp-json directly)
+ * so that requests work when permalinks are not set.
  * Handles URL parsing (full URL vs relative REST path), apiFetch calls,
  * and maps all known error codes to i18n error messages.
  */
 
 import { __, sprintf } from '@wordpress/i18n';
 import apiFetch from '@wordpress/api-fetch';
+import { getRestApiBaseUrl } from '../restApi.js';
+
+/**
+ * Get base URL for the current site (origin or home URL including subdirectory).
+ *
+ * @return {string} Base URL
+ */
+function getBaseUrl() {
+	if (typeof window === 'undefined') {
+		return '';
+	}
+	const config = window.nfdAIChat || {};
+	return config.homeUrl || window.location.origin;
+}
 
 /**
  * Fetch agent configuration from the backend.
+ * Uses rest_route query parameter for the request so it works regardless of permalink settings.
  *
  * @param {Object} options
  * @param {string} options.configEndpoint  REST API endpoint (full URL or relative path)
- * @param {string} options.storageNamespace  Client storage namespace (sent as query param)
+ * @param {string} options.consumer  Consumer identifier (required). Sent as query param `consumer`. Valid values are defined by the backend.
  * @return {Promise<Object>} Config object from backend
  * @throws {Error} With i18n message on failure
  */
-export async function fetchAgentConfig({ configEndpoint, storageNamespace }) {
+export async function fetchAgentConfig({ configEndpoint, consumer }) {
 	try {
-		// Extract namespace and route from configEndpoint if it's a full URL
-		// Otherwise, assume it's already in the format 'nfd-agents/chat/v1/config'
+		// Extract REST path from configEndpoint (e.g. 'nfd-agents/chat/v1/config')
 		let path = configEndpoint;
+		let baseUrl = getBaseUrl();
 
-		// If configEndpoint is a full URL, extract the REST API path
 		if (configEndpoint.startsWith('http://') || configEndpoint.startsWith('https://')) {
 			const urlObj = new URL(configEndpoint);
 			if (urlObj.searchParams.has('rest_route')) {
 				path = urlObj.searchParams.get('rest_route');
 			} else if (urlObj.pathname.includes('/wp-json/')) {
-				path = urlObj.pathname.replace('/wp-json/', '');
+				path = urlObj.pathname.replace(/^\/wp-json\//, '').replace(/^\/wp-json/, '');
 			} else {
 				path = urlObj.pathname.replace(/^\//, '');
 			}
+			// Base URL for rest_route: origin + pathname (without query), or path before /wp-json
+			if (urlObj.pathname.includes('/wp-json')) {
+				const beforeWpJson = urlObj.pathname.split('/wp-json')[0].replace(/\/$/, '');
+				baseUrl = urlObj.origin + (beforeWpJson || '/');
+			} else {
+				baseUrl = urlObj.origin + (urlObj.pathname || '/');
+			}
 		}
 
-		// Use apiFetch which handles permalinks and nonce automatically
-		const cleanPath = path.startsWith('/') ? path.slice(1) : path;
+		const cleanPath = path.replace(/^\//, '');
 
-		// For GET requests, append query parameters to the path
-		const pathWithParams = `${cleanPath}?storage_namespace=${encodeURIComponent(storageNamespace)}`;
+		// Always use rest_route parameter (never wp-json) so permalinks are not required
+		const restBase = getRestApiBaseUrl(baseUrl);
+		const restRoute = restBase.includes('rest_route=')
+			? restBase.replace(/rest_route=\/?/, `rest_route=/${cleanPath}`)
+			: `${restBase}${restBase.includes('?') ? '&' : '?'}rest_route=/${cleanPath}`;
+		const url = `${restRoute}&consumer=${encodeURIComponent(consumer)}`;
 
 		const config = await apiFetch({
-			path: pathWithParams,
+			url,
 			parse: true,
 		});
 

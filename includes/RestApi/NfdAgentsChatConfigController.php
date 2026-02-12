@@ -3,7 +3,11 @@
 namespace NewfoldLabs\WP\Module\AIChat\RestApi;
 
 use NewfoldLabs\WP\Module\Data\SiteCapabilities;
-use NewfoldLabs\WP\Module\AIChat\Helpers\HiiveHelper;
+use NewfoldLabs\WP\Module\AIChat\Helpers\BrandHelper;
+use NewfoldLabs\WP\Module\AIChat\Helpers\ConsumerCapabilitiesHelper;
+use NewfoldLabs\WP\Module\AIChat\Helpers\HuapiHelper;
+use NewfoldLabs\WP\Module\AIChat\Helpers\NfdAgentsGatewayHelper;
+use NewfoldLabs\WP\Module\AIChat\Helpers\SiteHashHelper;
 use NewfoldLabs\WP\ModuleLoader\Container;
 use WP_REST_Controller;
 use WP_REST_Request;
@@ -15,7 +19,7 @@ use WP_Error;
  *
  * Provides configuration endpoint for AI chat (Help Center, Editor Chat, etc.)
  * Returns gateway URL, authentication token, and site configuration.
- * Use storage_namespace for capability lookup.
+ * Use consumer for capability lookup.
  */
 class NfdAgentsChatConfigController extends WP_REST_Controller {
 	/**
@@ -33,13 +37,6 @@ class NfdAgentsChatConfigController extends WP_REST_Controller {
 	protected $rest_base = 'config';
 
 	/**
-	 * Transient key for caching the HUAPI JWT (12-hour TTL).
-	 *
-	 * @var string
-	 */
-	const TRANSIENT_KEY_JWT = 'nfd_agents_jwt';
-
-	/**
 	 * Dependency injection container.
 	 *
 	 * @var Container
@@ -47,24 +44,45 @@ class NfdAgentsChatConfigController extends WP_REST_Controller {
 	protected $container;
 
 	/**
+	 * HUAPI JWT helper.
+	 *
+	 * @var HuapiHelper
+	 */
+	protected $huapi_helper;
+
+	/**
+	 * Brand resolution helper.
+	 *
+	 * @var BrandHelper
+	 */
+	protected $brand_helper;
+
+	/**
+	 * Consumer-to-capability mapping helper.
+	 *
+	 * @var ConsumerCapabilitiesHelper
+	 */
+	protected $capabilities_helper;
+
+	/**
+	 * Gateway URL helper.
+	 *
+	 * @var NfdAgentsGatewayHelper
+	 */
+	protected $gateway_helper;
+
+	/**
 	 * Constructor.
 	 *
 	 * @param Container $container Dependency injection container.
 	 */
 	public function __construct( Container $container ) {
-		$this->container = $container;
+		$this->container           = $container;
+		$this->huapi_helper        = new HuapiHelper();
+		$this->brand_helper        = new BrandHelper( $container );
+		$this->capabilities_helper = new ConsumerCapabilitiesHelper();
+		$this->gateway_helper      = new NfdAgentsGatewayHelper();
 	}
-
-	/**
-	 * Map of storage namespace (surface) to capability requirements
-	 *
-	 * @var array
-	 */
-	protected $namespace_capabilities = array(
-		'default'      => 'canAccessAIHelpCenter',
-		'help_center'  => 'canAccessAIHelpCenter',
-		'editor_chat'  => 'canAccessAIEditorChat',
-	);
 
 	/**
 	 * Register the routes for the controller.
@@ -79,12 +97,11 @@ class NfdAgentsChatConfigController extends WP_REST_Controller {
 					'callback'            => array( $this, 'get_config' ),
 					'permission_callback' => array( $this, 'check_permission' ),
 					'args'                => array(
-						'storage_namespace' => array(
-							'description' => 'Client surface for capability lookup (help_center, editor_chat, default)',
+						'consumer' => array(
+							'description' => 'Consumer identifier for capability lookup. Required. Valid values are defined by the controller.',
 							'type'        => 'string',
-							'required'    => false,
-							'default'     => 'help_center',
-							'enum'        => array( 'default', 'help_center', 'editor_chat' ),
+							'required'    => true,
+							'enum'        => $this->capabilities_helper->get_valid_consumers(),
 						),
 					),
 				),
@@ -99,13 +116,13 @@ class NfdAgentsChatConfigController extends WP_REST_Controller {
 	 * @return bool|WP_Error
 	 */
 	public function check_permission( WP_REST_Request $request ) {
-		$namespace = $request->get_param( 'storage_namespace' ) ?: 'help_center';
-		$capability = $this->get_capability_for_namespace( $namespace );
+		$consumer   = $request->get_param( 'consumer' );
+		$capability = $this->capabilities_helper->get_capability_for_consumer( $consumer );
 
 		if ( ! $capability ) {
 			return new WP_Error(
-				'invalid_storage_namespace',
-				__( 'Invalid storage_namespace specified', 'wp-module-ai-chat' ),
+				'invalid_consumer',
+				__( 'Invalid consumer specified', 'nfd-editor-chat' ),
 				array( 'status' => 400 )
 			);
 		}
@@ -117,107 +134,35 @@ class NfdAgentsChatConfigController extends WP_REST_Controller {
 	/**
 	 * Get configuration for AI chat frontend
 	 *
-	 * @param WP_REST_Request $request Full details about the request.
+	 * @param WP_REST_Request $request Full details about the request. Required by REST API callback signature; consumer is validated in permission_callback.
 	 * @return WP_REST_Response|WP_Error
 	 */
 	public function get_config( WP_REST_Request $request ) {
-		// storage_namespace is used only for capability lookup; not included in response
-
-		$gateway_url = $this->get_gateway_url();
-		if ( $gateway_url === '' || $gateway_url === null ) {
+		$gateway_url = $this->gateway_helper->get_gateway_url();
+		if ( '' === $gateway_url ) {
 			return new WP_Error(
 				'gateway_url_not_configured',
-				__( 'NFD Agents gateway URL is not configured. Set NFD_AGENTS_CHAT_GATEWAY_URL in wp-config.php or use the nfd_agents_chat_gateway_url filter.', 'wp-module-ai-chat' ),
+				__( 'NFD AI Chat Jarvis gateway URL is not configured. Set NFD_AI_CHAT_JARVIS_GATEWAY_URL in wp-config.php.', 'nfd-editor-chat' ),
 				array( 'status' => 500 )
 			);
 		}
 
-		// Use NFD_AGENTS_CHAT_DEBUG_TOKEN if defined in wp-config.php (for local/debug when bypassing Hiive)
-		// Otherwise, use cached JWT or fetch from Hiive API
-		if ( defined( 'NFD_AGENTS_CHAT_DEBUG_TOKEN' ) && ! empty( NFD_AGENTS_CHAT_DEBUG_TOKEN ) ) {
-			$huapi_token = NFD_AGENTS_CHAT_DEBUG_TOKEN;
-		} else {
-			$huapi_token = get_transient( self::TRANSIENT_KEY_JWT );
-
-			if ( false === $huapi_token || '' === $huapi_token ) {
-				$hiive_helper  = new HiiveHelper( '/sites/v1/customer', array(), 'GET' );
-				$customer_data = $hiive_helper->send_request();
-
-				if ( is_wp_error( $customer_data ) || ! isset( $customer_data['huapi_token'] ) || '' === $customer_data['huapi_token'] ) {
-					return new WP_Error(
-						'huapi_token_fetch_failed',
-						__( 'Failed to fetch authentication token', 'wp-module-ai-chat' ),
-						array( 'status' => 500 )
-					);
-				}
-
-				$huapi_token = $customer_data['huapi_token'];
-				set_transient( self::TRANSIENT_KEY_JWT, $huapi_token, 12 * HOUR_IN_SECONDS );
-			}
+		$huapi_token = $this->huapi_helper->get_token();
+		if ( is_wp_error( $huapi_token ) ) {
+			return $huapi_token;
 		}
 
-		$site_url    = get_site_url();
-		$brand_id    = $this->get_brand_id();
-		$agent_type  = 'blu'; // Agent type (must match gateway/backend agent registry, e.g. blu)
-		$site_id     = substr( md5( get_site_url() ), 0, 8 );
+		$site_url = get_site_url();
 
 		return new WP_REST_Response(
 			array(
 				'gateway_url' => $gateway_url,
 				'huapi_token' => $huapi_token,
 				'site_url'    => $site_url,
-				'brand_id'    => $brand_id,
-				'agent_type'  => $agent_type,
-				'site_id'     => $site_id,
+				'brand_id'    => $this->brand_helper->get_brand_id(),
+				'agent_type'  => 'blu',
+				'site_id'     => SiteHashHelper::short_hash( $site_url, 8 ),
 			)
 		);
-	}
-
-	/**
-	 * Get capability name for a given storage namespace (surface)
-	 *
-	 * @param string $namespace Storage namespace (help_center, editor_chat, default).
-	 * @return string|null Capability name or null if invalid.
-	 */
-	protected function get_capability_for_namespace( $namespace ) {
-		return $this->namespace_capabilities[ $namespace ] ?? null;
-	}
-
-	/**
-	 * Get gateway URL (from NFD_AGENTS_CHAT_GATEWAY_URL, wp-config.php, or nfd_agents_chat_gateway_url filter)
-	 *
-	 * @return string Gateway URL, or empty string if not configured
-	 */
-	protected function get_gateway_url() {
-		if ( defined( 'NFD_AGENTS_CHAT_GATEWAY_URL' ) && NFD_AGENTS_CHAT_GATEWAY_URL !== '' ) {
-			return NFD_AGENTS_CHAT_GATEWAY_URL;
-		}
-		$url = apply_filters( 'nfd_agents_chat_gateway_url', '' );
-		return is_string( $url ) ? $url : '';
-	}
-
-	/**
-	 * Get brand ID
-	 *
-	 * @return string Brand identifier
-	 */
-	protected function get_brand_id() {
-		// Get brand from container if available
-		if ( $this->container ) {
-			try {
-				$brand = $this->container->get( 'brand' );
-				if ( ! empty( $brand ) ) {
-					return $brand;
-				}
-			} catch ( \Exception $e ) {
-				// Container doesn't have brand, fall through to fallback
-			}
-		}
-
-		// Fallback to WordPress option
-		$brand = get_option( 'mm_brand', 'bluehost' );
-		// Apply filter to allow override (consistent with bootstrap.php pattern)
-		$brand = apply_filters( 'newfold/container/plugin/brand', $brand );
-		return $brand;
 	}
 }

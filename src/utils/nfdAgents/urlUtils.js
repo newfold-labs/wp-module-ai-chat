@@ -64,7 +64,7 @@ export const isLocalhost = (url) => {
  * @param {string} config.agent_type     Agent type (may be 'nfd-agents' alias)
  * @param {string} config.huapi_token    Auth token
  * @param {string} sessionId             Session ID for the connection
- * @param {string} consumerType          Consumer type (e.g. 'help_center', 'editor_chat')
+ * @param {string} consumerType          Consumer type; passed to gateway as wordpress_${consumerType}
  * @return {string} Full WebSocket URL with query parameters
  */
 export const buildWebSocketUrl = (config, sessionId, consumerType) => {

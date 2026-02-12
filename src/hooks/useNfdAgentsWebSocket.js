@@ -35,12 +35,9 @@ import { generateSessionId } from '../utils/helpers';
  *
  * @param {Object} options Hook options
  * @param {string} options.configEndpoint REST API endpoint for fetching config
- * @param {string} [options.storageNamespace] Client-only: used for localStorage keys
- *   `nfd-ai-chat-${storageNamespace}-history` and `-conversation-id`. Not sent to backend.
- *   Optional; defaults to 'default' when omitted.
+ * @param {string} options.consumer Consumer identifier. Required. Used for localStorage keys and sent to backend as query param. Valid values are defined by the backend.
  * @param {boolean} [options.autoConnect=false] Whether to connect automatically
- * @param {string} [options.consumerType] Consumer type ('help_center' or 'editor_chat').
- *   Used to construct consumer parameter: `wordpress_${consumerType}`. Defaults to 'editor_chat'.
+ * @param {string} [options.consumerType] Consumer type; passed to backend as `wordpress_${consumerType}`. Defaults to 'editor_chat'.
  * @param {boolean} [options.autoLoadHistory=true] Whether to auto-load chat history from localStorage on mount.
  *   Set to false to start with empty chat but keep history in storage for later access.
  * @param {Function} [options.getConnectionFailedFallbackMessage] Optional. When connection has failed (e.g. after max
@@ -48,14 +45,14 @@ import { generateSessionId } from '../utils/helpers';
  *   Called as getConnectionFailedFallbackMessage(userMessage). Use for exact copy (e.g. NoResults-style) with i18n.
  * @return {Object} Hook return value with connection state and methods
  */
-const useNfdAgentsWebSocket = ({ configEndpoint, storageNamespace = 'default', autoConnect = false, consumerType = 'editor_chat', autoLoadHistory = true, getConnectionFailedFallbackMessage } = {}) => {
+const useNfdAgentsWebSocket = ({ configEndpoint, consumer, autoConnect = false, consumerType = 'editor_chat', autoLoadHistory = true, getConnectionFailedFallbackMessage } = {}) => {
 	// ---------------------------------------------------------------------------
 	// Storage keys (site-scoped)
 	// ---------------------------------------------------------------------------
 	const siteId = getSiteId();
 	const keyPrefix = siteId
-		? `nfd-ai-chat-${siteId}-${storageNamespace}`
-		: `nfd-ai-chat-${storageNamespace}`;
+		? `nfd-ai-chat-${siteId}-${consumer}`
+		: `nfd-ai-chat-${consumer}`;
 	const STORAGE_KEY = `${keyPrefix}-history`;
 	const CONVERSATION_STORAGE_KEY = `${keyPrefix}-conversation-id`;
 	const SESSION_STORAGE_KEY = `${keyPrefix}-session-id`;
@@ -166,7 +163,7 @@ const useNfdAgentsWebSocket = ({ configEndpoint, storageNamespace = 'default', a
 		try {
 			// Fetch config if not cached
 			if (!configRef.current) {
-				configRef.current = await fetchAgentConfig({ configEndpoint, storageNamespace });
+				configRef.current = await fetchAgentConfig({ configEndpoint, consumer });
 			}
 
 			const config = configRef.current;
@@ -179,7 +176,7 @@ const useNfdAgentsWebSocket = ({ configEndpoint, storageNamespace = 'default', a
 				const currentSiteId = getSiteId();
 				if (currentSiteId !== config.site_id) {
 					setSiteId(config.site_id);
-					migrateStorageKeys(currentSiteId, config.site_id, storageNamespace);
+					migrateStorageKeys(currentSiteId, config.site_id, consumer);
 				}
 			}
 
@@ -288,7 +285,7 @@ const useNfdAgentsWebSocket = ({ configEndpoint, storageNamespace = 'default', a
 				// ignore
 			}
 		}
-	}, [configEndpoint, storageNamespace, consumerType, saveSessionId, saveConversationId]);
+	}, [configEndpoint, consumer, consumerType, saveSessionId, saveConversationId]);
 
 	// ---------------------------------------------------------------------------
 	// Ref sync effects

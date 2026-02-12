@@ -3,7 +3,7 @@
  *
  * Displays previous chat sessions from localStorage. Shows archived conversations
  * (from "+" new chat) and falls back to current history key for legacy.
- * Use storageNamespace that matches useNfdAgentsWebSocket for the same consumer.
+ * Use consumer that matches useNfdAgentsWebSocket for the same consumer.
  */
 
 import { useState, useEffect, useCallback } from '@wordpress/element';
@@ -185,7 +185,7 @@ const getConversationTitle = (conversation) => {
 
 /**
  * @param {Object}   props
- * @param {string}   props.storageNamespace   - Must match useNfdAgentsWebSocket for same consumer
+ * @param {string}   props.consumer   - Must match useNfdAgentsWebSocket for same consumer
  * @param {Function} props.onSelectConversation
  * @param {number}   [props.refreshTrigger=0]
  * @param {boolean}  [props.disabled=false]
@@ -193,7 +193,7 @@ const getConversationTitle = (conversation) => {
  * @param {number}   [props.maxHistoryItems=3]
  */
 const ChatHistoryList = ({
-	storageNamespace,
+	consumer,
 	onSelectConversation,
 	refreshTrigger = 0,
 	disabled = false,
@@ -201,7 +201,7 @@ const ChatHistoryList = ({
 	maxHistoryItems = DEFAULT_MAX_HISTORY_ITEMS,
 }) => {
 	const [conversations, setConversations] = useState([]);
-	const keys = getChatHistoryStorageKeys(storageNamespace);
+	const keys = getChatHistoryStorageKeys(consumer);
 
 	useEffect(() => {
 		try {
@@ -266,7 +266,7 @@ const ChatHistoryList = ({
 			// eslint-disable-next-line no-console
 			console.warn('[Chat History] Failed to load chat history:', err);
 		}
-	}, [storageNamespace, refreshTrigger, maxHistoryItems]);
+	}, [consumer, refreshTrigger, maxHistoryItems]);
 
 	const handleHistoryClick = useCallback(
 		(conversation) => {

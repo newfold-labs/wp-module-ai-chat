@@ -5,7 +5,7 @@
  * @param {Array}  messages           - Array of message objects
  * @param {string} sessionId          - Session ID for the conversation
  * @param {string} conversationId    - Conversation ID from backend
- * @param {string} storageNamespace   - e.g. 'help_center', 'editor_chat'
+ * @param {string} consumer          - Consumer identifier (must match useNfdAgentsWebSocket for same surface)
  * @param {Object} [options]         - Optional settings
  * @param {number} [options.maxHistoryItems=3] - Max number of chats to keep in archive
  */
@@ -15,7 +15,7 @@ export function archiveConversation(
 	messages,
 	sessionId,
 	conversationId,
-	storageNamespace,
+	consumer,
 	options = {}
 ) {
 	if (!messages || messages.length === 0) {
@@ -38,7 +38,7 @@ export function archiveConversation(
 	}
 
 	const maxHistoryItems = options.maxHistoryItems ?? 3;
-	const keys = getChatHistoryStorageKeys(storageNamespace);
+	const keys = getChatHistoryStorageKeys(consumer);
 
 	try {
 		const archive = JSON.parse(
@@ -80,14 +80,14 @@ export function archiveConversation(
  *
  * @param {string} conversationId - Conversation ID to remove (can be null)
  * @param {string} sessionId      - Session ID to remove (can be null)
- * @param {string} storageNamespace - e.g. 'help_center', 'editor_chat'
+ * @param {string} consumer - Consumer identifier (must match useNfdAgentsWebSocket for same surface)
  */
 export function removeConversationFromArchive(
 	conversationId,
 	sessionId,
-	storageNamespace
+	consumer
 ) {
-	const keys = getChatHistoryStorageKeys(storageNamespace);
+	const keys = getChatHistoryStorageKeys(consumer);
 	try {
 		const archive = JSON.parse(
 			localStorage.getItem(keys.archive) || '[]'

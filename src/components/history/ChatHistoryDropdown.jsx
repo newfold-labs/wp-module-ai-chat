@@ -46,7 +46,7 @@ const ClockIcon = (props) => (
 
 /**
  * @param {Object}   props
- * @param {string}   props.storageNamespace   - Must match useNfdAgentsWebSocket for same consumer
+ * @param {string}   props.consumer   - Must match useNfdAgentsWebSocket for same consumer
  * @param {boolean}  props.open
  * @param {Function} props.onOpenChange
  * @param {Function} props.onSelectConversation
@@ -55,7 +55,7 @@ const ClockIcon = (props) => (
  * @param {number}   [props.maxHistoryItems]
  */
 const ChatHistoryDropdown = ({
-	storageNamespace,
+	consumer,
 	open,
 	onOpenChange,
 	onSelectConversation,
@@ -147,7 +147,7 @@ const ChatHistoryDropdown = ({
 		>
 			<div className="nfd-ai-chat-history-dropdown-inner">
 				<ChatHistoryList
-					storageNamespace={storageNamespace}
+					consumer={consumer}
 					onSelectConversation={handleSelect}
 					disabled={disabled}
 					refreshTrigger={open ? refreshTrigger : 0}
