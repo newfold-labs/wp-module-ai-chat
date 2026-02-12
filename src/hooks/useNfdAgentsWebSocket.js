@@ -1,31 +1,34 @@
 /**
- * WebSocket Hook for NFD Agents Backend
+ * WebSocket hook for NFD Agents backend.
  *
- * Connects to the NFD Agents backend via WebSocket and handles message streaming.
- * Shared hook for use across Help Center, Editor Chat, and other AI chat interfaces.
- *
- * This hook is a thin orchestrator — heavy logic lives in:
- *   utils/nfdAgents/messageHandler.js  — WebSocket message protocol
- *   utils/nfdAgents/configFetcher.js   — REST config fetching
- *   utils/nfdAgents/storageUtils.js    — localStorage persistence
- *   utils/nfdAgents/urlUtils.js        — WebSocket URL construction
+ * Connects via WebSocket, handles message streaming and reconnection.
+ * Used by Help Center, Editor Chat, and other AI chat UIs.
+ * Delegates to: messageHandler, configFetcher, storageUtils, urlUtils.
  */
 
-import { useState, useEffect, useRef, useCallback } from '@wordpress/element';
-import { __ } from '@wordpress/i18n';
-import { NFD_AGENTS_WEBSOCKET } from '../constants/nfdAgents/websocket';
-import { getSiteId, setSiteId, migrateStorageKeys } from '../constants/nfdAgents/storageKeys';
-import { buildWebSocketUrl } from '../utils/nfdAgents/urlUtils';
-import { createMessageHandler } from '../utils/nfdAgents/messageHandler';
-import { fetchAgentConfig } from '../utils/nfdAgents/configFetcher';
+/* global WebSocket localStorage sessionStorage */
+/* eslint-disable no-console -- Connection and storage warnings only. */
+
+import { useState, useEffect, useRef, useCallback } from "@wordpress/element";
+import { __ } from "@wordpress/i18n";
+import { NFD_AGENTS_WEBSOCKET } from "../constants/nfdAgents/websocket";
+import {
+	getSiteId,
+	setSiteId,
+	migrateStorageKeys,
+	getChatHistoryStorageKeys,
+} from "../constants/nfdAgents/storageKeys";
+import { buildWebSocketUrl } from "../utils/nfdAgents/urlUtils";
+import { createMessageHandler } from "../utils/nfdAgents/messageHandler";
+import { fetchAgentConfig } from "../utils/nfdAgents/configFetcher";
 import {
 	restoreChat,
 	persistMessages,
 	persistConversationId,
 	clearChatStorage,
 	hasMeaningfulUserMessage,
-} from '../utils/nfdAgents/storageUtils';
-import { generateSessionId } from '../utils/helpers';
+} from "../utils/nfdAgents/storageUtils";
+import { generateSessionId } from "../utils/helpers";
 
 /**
  * useNfdAgentsWebSocket Hook
@@ -33,39 +36,48 @@ import { generateSessionId } from '../utils/helpers';
  * Manages WebSocket connection to NFD Agents backend with automatic reconnection
  * and message handling.
  *
- * @param {Object} options Hook options
- * @param {string} options.configEndpoint REST API endpoint for fetching config
- * @param {string} options.consumer Consumer identifier. Required. Used for localStorage keys and sent to backend as query param. Valid values are defined by the backend.
- * @param {boolean} [options.autoConnect=false] Whether to connect automatically
- * @param {string} [options.consumerType] Consumer type; passed to backend as `wordpress_${consumerType}`. Defaults to 'editor_chat'.
- * @param {boolean} [options.autoLoadHistory=true] Whether to auto-load chat history from localStorage on mount.
- *   Set to false to start with empty chat but keep history in storage for later access.
+ * @param {Object}   options                                      Hook options
+ * @param {string}   options.configEndpoint                       REST API endpoint for fetching config
+ * @param {string}   options.consumer                             Consumer identifier. Required. Used for localStorage keys and sent to backend as query param. Valid values are defined by the backend.
+ * @param {boolean}  [options.autoConnect=false]                  Whether to connect automatically
+ * @param {string}   [options.consumerType]                       Consumer type; passed to backend as `wordpress_${consumerType}`. Defaults to 'editor_chat'.
+ * @param {boolean}  [options.autoLoadHistory=true]               Whether to auto-load chat history from localStorage on mount.
+ *                                                                Set to false to start with empty chat but keep history in storage for later access.
  * @param {Function} [options.getConnectionFailedFallbackMessage] Optional. When connection has failed (e.g. after max
- *   retries) and the user sends a message, the hook will add an assistant message with the returned string.
- *   Called as getConnectionFailedFallbackMessage(userMessage). Use for exact copy (e.g. NoResults-style) with i18n.
+ *                                                                retries) and the user sends a message, the hook will add an assistant message with the returned string.
+ *                                                                Called as getConnectionFailedFallbackMessage(userMessage). Use for exact copy (e.g. NoResults-style) with i18n.
  * @return {Object} Hook return value with connection state and methods
  */
-const useNfdAgentsWebSocket = ({ configEndpoint, consumer, autoConnect = false, consumerType = 'editor_chat', autoLoadHistory = true, getConnectionFailedFallbackMessage } = {}) => {
+const useNfdAgentsWebSocket = ({
+	configEndpoint,
+	consumer,
+	autoConnect = false,
+	consumerType = "editor_chat",
+	autoLoadHistory = true,
+	getConnectionFailedFallbackMessage,
+} = {}) => {
 	// ---------------------------------------------------------------------------
-	// Storage keys (site-scoped)
+	// Storage keys (site-scoped; single source of truth from storageKeys.js)
 	// ---------------------------------------------------------------------------
-	const siteId = getSiteId();
-	const keyPrefix = siteId
-		? `nfd-ai-chat-${siteId}-${consumer}`
-		: `nfd-ai-chat-${consumer}`;
-	const STORAGE_KEY = `${keyPrefix}-history`;
-	const CONVERSATION_STORAGE_KEY = `${keyPrefix}-conversation-id`;
-	const SESSION_STORAGE_KEY = `${keyPrefix}-session-id`;
+	const storageKeys = getChatHistoryStorageKeys(consumer);
+	const STORAGE_KEY = storageKeys.history;
+	const CONVERSATION_STORAGE_KEY = storageKeys.conversationId;
+	const SESSION_STORAGE_KEY = storageKeys.sessionId;
+	const keyPrefix = STORAGE_KEY.replace(/-history$/, "");
 
 	// ---------------------------------------------------------------------------
 	// State (lazy-init from localStorage)
 	// ---------------------------------------------------------------------------
 	const [messages, setMessages] = useState(() => {
-		if (!autoLoadHistory) return [];
+		if (!autoLoadHistory) {
+			return [];
+		}
 		return restoreChat(STORAGE_KEY, CONVERSATION_STORAGE_KEY, SESSION_STORAGE_KEY).messages;
 	});
 	const [conversationId, setConversationId] = useState(() => {
-		if (!autoLoadHistory) return null;
+		if (!autoLoadHistory) {
+			return null;
+		}
 		return restoreChat(STORAGE_KEY, CONVERSATION_STORAGE_KEY, SESSION_STORAGE_KEY).conversationId;
 	});
 
@@ -74,22 +86,26 @@ const useNfdAgentsWebSocket = ({ configEndpoint, consumer, autoConnect = false, 
 	const [error, setError] = useState(null);
 	const [isTyping, setIsTyping] = useState(false);
 	const [status, setStatus] = useState(null);
-	const [currentResponse, setCurrentResponse] = useState('');
+	const [currentResponse, setCurrentResponse] = useState("");
 	const [approvalRequest, setApprovalRequest] = useState(null);
+	// Restore "failed" from sessionStorage so UI shows error state across navigations within the tab
 	const [connectionState, setConnectionState] = useState(() => {
 		try {
-			if (sessionStorage.getItem(`${keyPrefix}-connection-failed`) === '1') {
-				return 'failed';
+			if (sessionStorage.getItem(`${keyPrefix}-connection-failed`) === "1") {
+				return "failed";
 			}
 		} catch (e) {
 			// ignore
 		}
-		return 'disconnected';
+		return "disconnected";
 	});
 	const [retryAttempt, setRetryAttempt] = useState(0);
 
 	// ---------------------------------------------------------------------------
-	// Refs
+	// Refs — wsRef: current WebSocket. reconnectTimeoutRef/Attempts: backoff. configRef: cached config.
+	// previousAutoConnectRef/connectingRef: avoid duplicate connect. sessionIdRef: current session (lazy init below).
+	// hasUserMessageRef/isStoppedRef: read by messageHandler. typingTimeoutRef: clear on stop/close.
+	// messagesRef/connectionStateRef/prevConnectionStateRef: latest state for callbacks.
 	// ---------------------------------------------------------------------------
 	const wsRef = useRef(null);
 	const reconnectTimeoutRef = useRef(null);
@@ -104,7 +120,7 @@ const useNfdAgentsWebSocket = ({ configEndpoint, consumer, autoConnect = false, 
 		return null;
 	});
 	// Unwrap lazy initializer for ref (refs don't support lazy init like useState)
-	if (typeof sessionIdRef.current === 'function') {
+	if (typeof sessionIdRef.current === "function") {
 		sessionIdRef.current = sessionIdRef.current();
 	}
 	const hasUserMessageRef = useRef(false);
@@ -120,34 +136,47 @@ const useNfdAgentsWebSocket = ({ configEndpoint, consumer, autoConnect = false, 
 	const TYPING_TIMEOUT = NFD_AGENTS_WEBSOCKET.TYPING_TIMEOUT;
 
 	// ---------------------------------------------------------------------------
-	// Callbacks for messageHandler deps (save to ref + localStorage)
+	// Callbacks passed to messageHandler (persist session/conversation ID to ref + localStorage)
 	// ---------------------------------------------------------------------------
-	const saveSessionId = useCallback((sid) => {
-		sessionIdRef.current = sid;
-		try {
-			localStorage.setItem(SESSION_STORAGE_KEY, sid);
-		} catch (err) {
-			// eslint-disable-next-line no-console
-			console.warn('[AI Chat] Failed to save session ID to localStorage:', err);
-		}
-	}, [SESSION_STORAGE_KEY]);
+	const saveSessionId = useCallback(
+		(sid) => {
+			sessionIdRef.current = sid;
+			try {
+				localStorage.setItem(SESSION_STORAGE_KEY, sid);
+			} catch (err) {
+				// eslint-disable-next-line no-console
+				console.warn("[AI Chat] Failed to save session ID to localStorage:", err);
+			}
+		},
+		[SESSION_STORAGE_KEY]
+	);
 
-	const saveConversationId = useCallback((cid) => {
-		try {
-			localStorage.setItem(CONVERSATION_STORAGE_KEY, cid);
-		} catch (err) {
-			// eslint-disable-next-line no-console
-			console.warn('[AI Chat] Failed to save conversation ID to localStorage:', err);
-		}
-	}, [CONVERSATION_STORAGE_KEY]);
+	const saveConversationId = useCallback(
+		(cid) => {
+			try {
+				localStorage.setItem(CONVERSATION_STORAGE_KEY, cid);
+			} catch (err) {
+				// eslint-disable-next-line no-console
+				console.warn("[AI Chat] Failed to save conversation ID to localStorage:", err);
+			}
+		},
+		[CONVERSATION_STORAGE_KEY]
+	);
 
 	// ---------------------------------------------------------------------------
-	// connect()
+	// connect() — Idempotent. Fetches config (cached), ensures site ID + storage migration,
+	// opens WebSocket, wires message handler. On close, schedules reconnect with backoff.
 	// ---------------------------------------------------------------------------
 	const connect = useCallback(async () => {
-		if (wsRef.current?.readyState === WebSocket.OPEN) return;
-		if (wsRef.current?.readyState === WebSocket.CONNECTING) return;
-		if (connectingRef.current) return;
+		if (wsRef.current?.readyState === WebSocket.OPEN) {
+			return;
+		}
+		if (wsRef.current?.readyState === WebSocket.CONNECTING) {
+			return;
+		}
+		if (connectingRef.current) {
+			return;
+		}
 
 		// Clear "connection failed" flag
 		try {
@@ -157,7 +186,7 @@ const useNfdAgentsWebSocket = ({ configEndpoint, consumer, autoConnect = false, 
 		}
 		connectingRef.current = true;
 		setIsConnecting(true);
-		setConnectionState('connecting');
+		setConnectionState("connecting");
 		setError(null);
 
 		try {
@@ -168,7 +197,7 @@ const useNfdAgentsWebSocket = ({ configEndpoint, consumer, autoConnect = false, 
 
 			const config = configRef.current;
 			if (!config) {
-				throw new Error(__('No configuration available', 'wp-module-ai-chat'));
+				throw new Error(__("No configuration available", "wp-module-ai-chat"));
 			}
 
 			// Cache site ID and migrate old storage keys if needed
@@ -191,17 +220,18 @@ const useNfdAgentsWebSocket = ({ configEndpoint, consumer, autoConnect = false, 
 			const ws = new WebSocket(wsUrl);
 			wsRef.current = ws;
 
+			// Connected: reset reconnection state and sync "has user message" from current messages
 			ws.onopen = () => {
 				connectingRef.current = false;
 				setIsConnected(true);
 				setIsConnecting(false);
-				setConnectionState('connected');
+				setConnectionState("connected");
 				setRetryAttempt(0);
 				setError(null);
 				reconnectAttempts.current = 0;
-				hasUserMessageRef.current = (messagesRef.current && messagesRef.current.length > 0);
+				hasUserMessageRef.current = messagesRef.current && messagesRef.current.length > 0;
 				isStoppedRef.current = false;
-				setCurrentResponse('');
+				setCurrentResponse("");
 			};
 
 			// Wire message handler
@@ -226,16 +256,16 @@ const useNfdAgentsWebSocket = ({ configEndpoint, consumer, autoConnect = false, 
 					handleMessage(data);
 				} catch (err) {
 					// eslint-disable-next-line no-console
-					console.error('[AI Chat] Error parsing WebSocket message:', err);
+					console.error("[AI Chat] Error parsing WebSocket message:", err);
 				}
 			};
 
 			ws.onerror = () => {
 				connectingRef.current = false;
 				setIsConnecting(false);
-				setConnectionState('failed');
+				setConnectionState("failed");
 				try {
-					sessionStorage.setItem(`${keyPrefix}-connection-failed`, '1');
+					sessionStorage.setItem(`${keyPrefix}-connection-failed`, "1");
 				} catch (e) {
 					// ignore
 				}
@@ -251,44 +281,56 @@ const useNfdAgentsWebSocket = ({ configEndpoint, consumer, autoConnect = false, 
 					wsRef.current = null;
 				}
 
+				// Exponential backoff: reconnect only if not normal close and under max attempts
 				if (event.code !== 1000 && reconnectAttempts.current < MAX_RECONNECT_ATTEMPTS) {
 					reconnectAttempts.current++;
 					setRetryAttempt(reconnectAttempts.current);
-					setConnectionState('reconnecting');
+					setConnectionState("reconnecting");
 					const delay = RECONNECT_DELAY * Math.pow(2, reconnectAttempts.current - 1);
 					reconnectTimeoutRef.current = setTimeout(() => {
 						connect();
 					}, delay);
 				} else if (reconnectAttempts.current >= MAX_RECONNECT_ATTEMPTS) {
-					setConnectionState('failed');
+					setConnectionState("failed");
 					try {
-						sessionStorage.setItem(`${keyPrefix}-connection-failed`, '1');
+						sessionStorage.setItem(`${keyPrefix}-connection-failed`, "1");
 					} catch (e) {
 						// ignore
 					}
 				} else {
-					setConnectionState('disconnected');
+					setConnectionState("disconnected");
 				}
 			};
 		} catch (connectError) {
 			connectingRef.current = false;
-			// Log at debug level; config/token failures are expected when Hiive is unavailable or NFD_AGENTS_CHAT_DEBUG_TOKEN is not set
-			if (typeof console !== 'undefined' && console.warn) {
+			// Config/token failures expected when Hiive unavailable or debug token not set
+			if (typeof console !== "undefined" && console.warn) {
 				// eslint-disable-next-line no-console
-				console.warn('[AI Chat] Connection failed:', connectError?.message || connectError);
+				console.warn("[AI Chat] Connection failed:", connectError?.message || connectError);
 			}
 			setIsConnecting(false);
-			setConnectionState('failed');
+			setConnectionState("failed");
 			try {
-				sessionStorage.setItem(`${keyPrefix}-connection-failed`, '1');
+				sessionStorage.setItem(`${keyPrefix}-connection-failed`, "1");
 			} catch (e) {
 				// ignore
 			}
 		}
-	}, [configEndpoint, consumer, consumerType, saveSessionId, saveConversationId]);
+	}, [
+		configEndpoint,
+		consumer,
+		consumerType,
+		keyPrefix,
+		saveSessionId,
+		saveConversationId,
+		MAX_RECONNECT_ATTEMPTS,
+		RECONNECT_DELAY,
+		TYPING_TIMEOUT,
+	]);
 
 	// ---------------------------------------------------------------------------
-	// Ref sync effects
+	// Ref sync effects — Keep refs in sync so callbacks (e.g. sendMessage) see latest
+	// values without needing them in dependency arrays.
 	// ---------------------------------------------------------------------------
 	useEffect(() => {
 		messagesRef.current = messages;
@@ -299,39 +341,39 @@ const useNfdAgentsWebSocket = ({ configEndpoint, consumer, autoConnect = false, 
 	}, [connectionState]);
 
 	// ---------------------------------------------------------------------------
-	// Connection-failed fallback effect
+	// On transition to "failed", append assistant fallback message so user sees error state
 	// ---------------------------------------------------------------------------
 	useEffect(() => {
-		if (connectionState !== 'failed' || prevConnectionStateRef.current === 'failed') {
+		if (connectionState !== "failed" || prevConnectionStateRef.current === "failed") {
 			prevConnectionStateRef.current = connectionState;
 			return;
 		}
 		prevConnectionStateRef.current = connectionState;
 
 		const defaultFallback = __(
-			'Sorry, we couldn\'t connect. Please try again later or contact support.',
-			'wp-module-ai-chat'
+			"Sorry, we couldn't connect. Please try again later or contact support.",
+			"wp-module-ai-chat"
 		);
 		setMessages((prev) => {
 			const last = prev.length > 0 ? prev[prev.length - 1] : null;
-			const isLastUser = last && (last.role === 'user' || last.type === 'user');
+			const isLastUser = last && (last.role === "user" || last.type === "user");
 			const fallbackContent =
-				typeof getConnectionFailedFallbackMessage === 'function'
-					? getConnectionFailedFallbackMessage(isLastUser ? last.content : '')
+				typeof getConnectionFailedFallbackMessage === "function"
+					? getConnectionFailedFallbackMessage(isLastUser ? last.content : "")
 					: defaultFallback;
 			return [
 				...prev,
 				{
 					id: `msg-${Date.now()}-fallback`,
-					role: 'assistant',
-					type: 'assistant',
+					role: "assistant",
+					type: "assistant",
 					content: fallbackContent,
 					timestamp: new Date(),
 				},
 			];
 		});
 		setError(null);
-		setCurrentResponse('');
+		setCurrentResponse("");
 		setIsTyping(false);
 		setStatus(null);
 		if (typingTimeoutRef.current) {
@@ -341,7 +383,9 @@ const useNfdAgentsWebSocket = ({ configEndpoint, consumer, autoConnect = false, 
 	}, [connectionState, getConnectionFailedFallbackMessage]);
 
 	// ---------------------------------------------------------------------------
-	// sendMessage
+	// sendMessage(message, convId?) — If connection failed: append user + fallback message.
+	// If not connected: append user message (if new), then connect. If connected: append
+	// user message (if new), set typing, send { type: 'chat', message } with conversationId.
 	// ---------------------------------------------------------------------------
 	const sendMessage = useCallback(
 		(message, convId = null) => {
@@ -349,38 +393,38 @@ const useNfdAgentsWebSocket = ({ configEndpoint, consumer, autoConnect = false, 
 			hasUserMessageRef.current = true;
 
 			const isFailed =
-				connectionStateRef.current === 'failed' ||
+				connectionStateRef.current === "failed" ||
 				(reconnectAttempts.current >= MAX_RECONNECT_ATTEMPTS &&
 					(!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN));
 			if (isFailed && !convId) {
 				const userMessage = {
 					id: `msg-${Date.now()}`,
-					role: 'user',
-					type: 'user',
+					role: "user",
+					type: "user",
 					content: message,
 					timestamp: new Date(),
 					sessionId: sessionIdRef.current,
 				};
 				const fallbackContent =
-					typeof getConnectionFailedFallbackMessage === 'function'
+					typeof getConnectionFailedFallbackMessage === "function"
 						? getConnectionFailedFallbackMessage(message)
 						: __(
-								'Sorry, we couldn\'t connect. Please try again later or contact support.',
-								'wp-module-ai-chat'
-						  );
+								"Sorry, we couldn't connect. Please try again later or contact support.",
+								"wp-module-ai-chat"
+							);
 				setMessages((prev) => [
 					...prev,
 					userMessage,
 					{
 						id: `msg-${Date.now()}-fallback`,
-						role: 'assistant',
-						type: 'assistant',
+						role: "assistant",
+						type: "assistant",
 						content: fallbackContent,
 						timestamp: new Date(),
 					},
 				]);
 				setError(null);
-				setCurrentResponse('');
+				setCurrentResponse("");
 				setIsTyping(false);
 				setStatus(null);
 				return;
@@ -390,15 +434,15 @@ const useNfdAgentsWebSocket = ({ configEndpoint, consumer, autoConnect = false, 
 				if (!convId) {
 					const userMessage = {
 						id: `msg-${Date.now()}`,
-						role: 'user',
-						type: 'user',
+						role: "user",
+						type: "user",
 						content: message,
 						timestamp: new Date(),
 						sessionId: sessionIdRef.current,
 					};
 					setMessages((prev) => [...prev, userMessage]);
 				}
-				if (connectionStateRef.current === 'disconnected') {
+				if (connectionStateRef.current === "disconnected") {
 					connect();
 				}
 				return;
@@ -407,14 +451,14 @@ const useNfdAgentsWebSocket = ({ configEndpoint, consumer, autoConnect = false, 
 			if (!convId) {
 				const userMessage = {
 					id: `msg-${Date.now()}`,
-					role: 'user',
-					type: 'user',
+					role: "user",
+					type: "user",
 					content: message,
 					timestamp: new Date(),
 					sessionId: sessionIdRef.current,
 				};
 				setMessages((prev) => [...prev, userMessage]);
-				setCurrentResponse('');
+				setCurrentResponse("");
 				setIsTyping(true);
 
 				if (typingTimeoutRef.current) {
@@ -427,7 +471,7 @@ const useNfdAgentsWebSocket = ({ configEndpoint, consumer, autoConnect = false, 
 				}, TYPING_TIMEOUT);
 			}
 
-			const payload = { type: 'chat', message };
+			const payload = { type: "chat", message };
 
 			if (convId) {
 				payload.conversationId = convId;
@@ -437,28 +481,35 @@ const useNfdAgentsWebSocket = ({ configEndpoint, consumer, autoConnect = false, 
 
 			wsRef.current.send(JSON.stringify(payload));
 		},
-		[conversationId, getConnectionFailedFallbackMessage]
+		[
+			conversationId,
+			connect,
+			getConnectionFailedFallbackMessage,
+			MAX_RECONNECT_ATTEMPTS,
+			TYPING_TIMEOUT,
+		]
 	);
 
 	// ---------------------------------------------------------------------------
-	// sendSystemMessage
+	// sendSystemMessage(message) — Sends a system/backend message over the open socket
+	// (e.g. for handoff or context). Requires connection; sets typing until response.
 	// ---------------------------------------------------------------------------
 	const sendSystemMessage = useCallback(
 		(message) => {
 			if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
 				// eslint-disable-next-line no-console
-				console.warn('[AI Chat] Cannot send system message - not connected');
+				console.warn("[AI Chat] Cannot send system message - not connected");
 				return;
 			}
 
-			const payload = { type: 'chat', message };
+			const payload = { type: "chat", message };
 
 			if (conversationId) {
 				payload.conversationId = conversationId;
 			}
 
 			setIsTyping(true);
-			setCurrentResponse('');
+			setCurrentResponse("");
 
 			if (typingTimeoutRef.current) {
 				clearTimeout(typingTimeoutRef.current);
@@ -471,11 +522,11 @@ const useNfdAgentsWebSocket = ({ configEndpoint, consumer, autoConnect = false, 
 
 			wsRef.current.send(JSON.stringify(payload));
 		},
-		[conversationId, connect]
+		[conversationId, TYPING_TIMEOUT]
 	);
 
 	// ---------------------------------------------------------------------------
-	// disconnect
+	// disconnect() — Close WebSocket, clear reconnect and typing timeouts, set state to disconnected.
 	// ---------------------------------------------------------------------------
 	const disconnect = useCallback(() => {
 		if (reconnectTimeoutRef.current) {
@@ -486,16 +537,16 @@ const useNfdAgentsWebSocket = ({ configEndpoint, consumer, autoConnect = false, 
 			typingTimeoutRef.current = null;
 		}
 		if (wsRef.current) {
-			wsRef.current.close(1000, 'User disconnected');
+			wsRef.current.close(1000, "User disconnected");
 			wsRef.current = null;
 		}
 		setIsConnected(false);
 		setIsConnecting(false);
-		setConnectionState('disconnected');
+		setConnectionState("disconnected");
 	}, []);
 
 	// ---------------------------------------------------------------------------
-	// setSessionId / getSessionId
+	// setSessionId(sid) / getSessionId() — Update or read current session ID (used by messageHandler and history).
 	// ---------------------------------------------------------------------------
 	const setSessionId = useCallback((sid) => {
 		sessionIdRef.current = sid ?? null;
@@ -504,47 +555,52 @@ const useNfdAgentsWebSocket = ({ configEndpoint, consumer, autoConnect = false, 
 	const getSessionId = useCallback(() => sessionIdRef.current ?? null, []);
 
 	// ---------------------------------------------------------------------------
-	// loadConversation
+	// loadConversation(msgs, convId, sessId) — Replace messages, conversationId, sessionId
+	// with loaded history. If already connected, persist new ids and reconnect so backend uses them.
 	// ---------------------------------------------------------------------------
-	const loadConversation = useCallback((msgs, convId, sessId) => {
-		if (Array.isArray(msgs)) {
-			const withTimestamps = msgs.map((msg) => ({
-				...msg,
-				timestamp: msg.timestamp ? new Date(msg.timestamp) : new Date(),
-				animateTyping: false,
-			}));
-			setMessages(withTimestamps);
-		}
-		setConversationId(convId ?? null);
-		sessionIdRef.current = sessId ?? null;
-		setError(null);
-		setIsTyping(false);
-		setStatus(null);
-		setCurrentResponse('');
-
-		if (sessId != null && wsRef.current?.readyState === WebSocket.OPEN) {
-			try {
-				localStorage.setItem(SESSION_STORAGE_KEY, sessId);
-				if (convId != null) {
-					localStorage.setItem(CONVERSATION_STORAGE_KEY, convId);
-				}
-			} catch (err) {
-				// eslint-disable-next-line no-console
-				console.warn('[AI Chat] Failed to persist session for history load:', err);
+	const loadConversation = useCallback(
+		(msgs, convId, sessId) => {
+			if (Array.isArray(msgs)) {
+				const withTimestamps = msgs.map((msg) => ({
+					...msg,
+					timestamp: msg.timestamp ? new Date(msg.timestamp) : new Date(),
+					animateTyping: false,
+				}));
+				setMessages(withTimestamps);
 			}
-			disconnect();
-			connect();
-		}
-	}, [connect, disconnect, SESSION_STORAGE_KEY, CONVERSATION_STORAGE_KEY]);
+			setConversationId(convId ?? null);
+			sessionIdRef.current = sessId ?? null;
+			setError(null);
+			setIsTyping(false);
+			setStatus(null);
+			setCurrentResponse("");
+
+			// If we're connected, persist the loaded session/conv and reconnect so the backend uses them
+			if (sessId !== null && sessId !== undefined && wsRef.current?.readyState === WebSocket.OPEN) {
+				try {
+					localStorage.setItem(SESSION_STORAGE_KEY, sessId);
+					if (convId !== null && convId !== undefined) {
+						localStorage.setItem(CONVERSATION_STORAGE_KEY, convId);
+					}
+				} catch (err) {
+					// eslint-disable-next-line no-console
+					console.warn("[AI Chat] Failed to persist session for history load:", err);
+				}
+				disconnect();
+				connect();
+			}
+		},
+		[connect, disconnect, SESSION_STORAGE_KEY, CONVERSATION_STORAGE_KEY]
+	);
 
 	// ---------------------------------------------------------------------------
-	// stopRequest
+	// stopRequest() — Set stopped flag and clear typing; messageHandler checks isStoppedRef and stops appending.
 	// ---------------------------------------------------------------------------
 	const stopRequest = useCallback(() => {
 		isStoppedRef.current = true;
 		setIsTyping(false);
 		setStatus(null);
-		setCurrentResponse('');
+		setCurrentResponse("");
 		if (typingTimeoutRef.current) {
 			clearTimeout(typingTimeoutRef.current);
 			typingTimeoutRef.current = null;
@@ -552,7 +608,7 @@ const useNfdAgentsWebSocket = ({ configEndpoint, consumer, autoConnect = false, 
 	}, []);
 
 	// ---------------------------------------------------------------------------
-	// clearApprovalRequest / clearTyping
+	// clearApprovalRequest() — Clear any pending tool-approval UI. clearTyping() — Clear typing state and timeout.
 	// ---------------------------------------------------------------------------
 	const clearApprovalRequest = useCallback(() => {
 		setApprovalRequest(null);
@@ -568,18 +624,19 @@ const useNfdAgentsWebSocket = ({ configEndpoint, consumer, autoConnect = false, 
 	}, []);
 
 	// ---------------------------------------------------------------------------
-	// addAssistantMessage
+	// addAssistantMessage(content) — Append an assistant message (e.g. error or notice).
+	// Normalizes content to string (handles object/undefined).
 	// ---------------------------------------------------------------------------
 	const addAssistantMessage = useCallback((content) => {
 		let contentString;
 		if (content === null || content === undefined) {
-			contentString = __('No content provided.', 'wp-module-ai-chat');
-		} else if (typeof content === 'object') {
+			contentString = __("No content provided.", "wp-module-ai-chat");
+		} else if (typeof content === "object") {
 			try {
 				contentString = JSON.stringify(content, null, 2);
 			} catch (e) {
 				// eslint-disable-next-line no-console
-				console.warn('[useNfdAgentsWebSocket] Failed to stringify content object:', e);
+				console.warn("[useNfdAgentsWebSocket] Failed to stringify content object:", e);
 				contentString = String(content);
 			}
 		} else {
@@ -590,8 +647,8 @@ const useNfdAgentsWebSocket = ({ configEndpoint, consumer, autoConnect = false, 
 			...prev,
 			{
 				id: `msg-${Date.now()}`,
-				role: 'assistant',
-				type: 'assistant',
+				role: "assistant",
+				type: "assistant",
 				content: contentString,
 				timestamp: new Date(),
 			},
@@ -605,21 +662,22 @@ const useNfdAgentsWebSocket = ({ configEndpoint, consumer, autoConnect = false, 
 	}, []);
 
 	// ---------------------------------------------------------------------------
-	// updateMessage
+	// updateMessage(messageIdOrPredicate, updater) — Update message(s): pass id or (msg) => boolean, then (msg) => newMsg.
 	// ---------------------------------------------------------------------------
 	const updateMessage = useCallback((messageIdOrPredicate, updater) => {
 		setMessages((prev) =>
 			prev.map((msg) => {
-				const shouldUpdate = typeof messageIdOrPredicate === 'function'
-					? messageIdOrPredicate(msg)
-					: msg.id === messageIdOrPredicate;
+				const shouldUpdate =
+					typeof messageIdOrPredicate === "function"
+						? messageIdOrPredicate(msg)
+						: msg.id === messageIdOrPredicate;
 				return shouldUpdate ? updater(msg) : msg;
 			})
 		);
 	}, []);
 
 	// ---------------------------------------------------------------------------
-	// clearChatHistory
+	// clearChatHistory() — Clear localStorage, reset all state/refs, close socket, cancel timeouts.
 	// ---------------------------------------------------------------------------
 	const clearChatHistory = useCallback(() => {
 		try {
@@ -630,7 +688,7 @@ const useNfdAgentsWebSocket = ({ configEndpoint, consumer, autoConnect = false, 
 			setApprovalRequest(null);
 			setIsTyping(false);
 			setStatus(null);
-			setCurrentResponse('');
+			setCurrentResponse("");
 			setError(null);
 
 			sessionIdRef.current = null;
@@ -656,12 +714,12 @@ const useNfdAgentsWebSocket = ({ configEndpoint, consumer, autoConnect = false, 
 			reconnectAttempts.current = 0;
 		} catch (err) {
 			// eslint-disable-next-line no-console
-			console.warn('[AI Chat] Failed to clear chat history:', err);
+			console.warn("[AI Chat] Failed to clear chat history:", err);
 		}
 	}, [STORAGE_KEY, CONVERSATION_STORAGE_KEY, SESSION_STORAGE_KEY]);
 
 	// ---------------------------------------------------------------------------
-	// manualRetry
+	// manualRetry() — Reset reconnect count and call connect() (e.g. after "Retry" button).
 	// ---------------------------------------------------------------------------
 	const manualRetry = useCallback(() => {
 		reconnectAttempts.current = 0;
@@ -671,27 +729,39 @@ const useNfdAgentsWebSocket = ({ configEndpoint, consumer, autoConnect = false, 
 	}, [connect]);
 
 	// ---------------------------------------------------------------------------
-	// Effects: autoConnect
+	// Effects: autoConnect — On mount or when autoConnect/connectionState changes, connect or disconnect.
+	// Skips connect when already failed or connecting; uses ref to avoid running connect on every state change.
 	// ---------------------------------------------------------------------------
 	useEffect(() => {
 		const previousAutoConnect = previousAutoConnectRef.current;
 
 		if (previousAutoConnect === null) {
 			previousAutoConnectRef.current = autoConnect;
-			if (autoConnect && connectionState !== 'failed' && !connectingRef.current) {
-				if (!wsRef.current || (wsRef.current.readyState !== WebSocket.OPEN && wsRef.current.readyState !== WebSocket.CONNECTING)) {
+			if (autoConnect && connectionState !== "failed" && !connectingRef.current) {
+				if (
+					!wsRef.current ||
+					(wsRef.current.readyState !== WebSocket.OPEN &&
+						wsRef.current.readyState !== WebSocket.CONNECTING)
+				) {
 					connect();
 				}
 			}
 			return;
 		}
 
-		if (previousAutoConnect === autoConnect) return;
+		if (previousAutoConnect === autoConnect) {
+			return;
+		}
 
 		previousAutoConnectRef.current = autoConnect;
 
 		if (autoConnect) {
-			if (!connectingRef.current && (!wsRef.current || (wsRef.current.readyState !== WebSocket.OPEN && wsRef.current.readyState !== WebSocket.CONNECTING))) {
+			if (
+				!connectingRef.current &&
+				(!wsRef.current ||
+					(wsRef.current.readyState !== WebSocket.OPEN &&
+						wsRef.current.readyState !== WebSocket.CONNECTING))
+			) {
 				connect();
 			}
 		} else {
@@ -701,7 +771,8 @@ const useNfdAgentsWebSocket = ({ configEndpoint, consumer, autoConnect = false, 
 	}, [autoConnect, connectionState]);
 
 	// ---------------------------------------------------------------------------
-	// Effects: persist messages
+	// Effects: persist messages — On messages change, write to localStorage. Skip full persist on first
+	// mount (initial load already in state) but do persist if there are meaningful user messages.
 	// ---------------------------------------------------------------------------
 	useEffect(() => {
 		if (isInitialMount.current) {
@@ -715,14 +786,14 @@ const useNfdAgentsWebSocket = ({ configEndpoint, consumer, autoConnect = false, 
 	}, [messages, STORAGE_KEY]);
 
 	// ---------------------------------------------------------------------------
-	// Effects: persist conversation ID
+	// Effects: persist conversation ID — Sync conversationId to localStorage when it changes.
 	// ---------------------------------------------------------------------------
 	useEffect(() => {
 		persistConversationId(CONVERSATION_STORAGE_KEY, conversationId);
 	}, [conversationId, CONVERSATION_STORAGE_KEY]);
 
 	// ---------------------------------------------------------------------------
-	// Return (same public API)
+	// Public API
 	// ---------------------------------------------------------------------------
 	return {
 		messages,
