@@ -65,7 +65,11 @@ export const buildWebSocketUrl = (config, sessionId, consumerType) => {
 	const agentType = (config.agent_type === "nfd-agents" ? "blu" : config.agent_type) || "blu";
 	const consumer = `wordpress_${consumerType}`;
 
-	return `${wsBaseUrl}/${config.brand_id}/agents/${agentType}/v1/ws?session_id=${sessionId}&token=${encodeURIComponent(config.huapi_token)}&consumer=${encodeURIComponent(consumer)}`;
+	let url = `${wsBaseUrl}/${config.brand_id}/agents/${agentType}/v1/ws?session_id=${sessionId}&token=${encodeURIComponent(config.huapi_token)}&consumer=${encodeURIComponent(consumer)}`;
+	if (config.site_url && typeof config.site_url === "string" && config.site_url.trim()) {
+		url += `&site_url=${encodeURIComponent(config.site_url.trim())}`;
+	}
+	return url;
 };
 
 /**
