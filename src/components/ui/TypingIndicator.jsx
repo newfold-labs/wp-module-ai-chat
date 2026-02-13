@@ -3,6 +3,12 @@
  */
 import { useState, useEffect } from "@wordpress/element";
 import { __ } from "@wordpress/i18n";
+import { TYPING_STATUS } from "../../constants/nfdAgents/typingStatus";
+
+/**
+ * Internal dependencies
+ */
+import { getToolDetails } from "../../utils/nfdAgents/typingIndicatorToolDisplay";
 
 /**
  * External dependencies
@@ -10,80 +16,18 @@ import { __ } from "@wordpress/i18n";
 import { Loader2, CheckCircle, XCircle, Sparkles, ChevronDown, ChevronRight } from "lucide-react";
 import classnames from "classnames";
 
-/**
- * Get ability details for display
- *
- * @param {string} abilityName The ability name
- * @return {Object} { title, description }
- */
-const getAbilityDetails = (abilityName) => {
-	const abilityMap = {
-		"blu/get-global-styles": {
-			title: __("Reading Site Colors", "wp-module-ai-chat"),
-			description: __(
-				"Fetching current color palette and typography settings",
-				"wp-module-ai-chat"
-			),
-		},
-		"blu/update-global-palette": {
-			title: __("Updating Site Colors", "wp-module-ai-chat"),
-			description: __("Applying new colors to global styles", "wp-module-ai-chat"),
-		},
-		"mcp-adapter-discover-abilities": {
-			title: __("Discovering Actions", "wp-module-ai-chat"),
-			description: __("Finding available WordPress abilities", "wp-module-ai-chat"),
-		},
-		"mcp-adapter-get-ability-info": {
-			title: __("Getting Ability Info", "wp-module-ai-chat"),
-			description: __("Fetching ability details", "wp-module-ai-chat"),
-		},
-		"mcp-adapter-execute-ability": {
-			title: __("Executing Action", "wp-module-ai-chat"),
-			description: __("Running WordPress ability", "wp-module-ai-chat"),
-		},
-	};
-
-	if (abilityMap[abilityName]) {
-		return abilityMap[abilityName];
-	}
-
-	if (abilityName === "preparing-changes") {
-		return {
-			title: __("Preparing changes", "wp-module-ai-chat"),
-			description: __("Building block markup", "wp-module-ai-chat"),
-		};
-	}
-
-	return {
-		title:
-			abilityName?.replace(/[-_\/]/g, " ").replace(/\b\w/g, (l) => l.toUpperCase()) ||
-			__("Executing", "wp-module-ai-chat"),
-		description: __("Running action", "wp-module-ai-chat"),
-	};
-};
-
-/**
- * Get tool details for display
- *
- * @param {string} toolName The tool name
- * @param {Object} args     The tool arguments
- * @return {Object} { title, description, params }
- */
-const getToolDetails = (toolName, args = {}) => {
-	if (toolName === "mcp-adapter-execute-ability") {
-		const abilityName = args?.ability_name || "unknown";
-		const details = getAbilityDetails(abilityName);
-
-		let params = null;
-		if (abilityName === "blu/update-global-palette" && args?.parameters?.colors) {
-			const colorCount = args.parameters.colors.length;
-			params = `${colorCount} color${colorCount !== 1 ? "s" : ""}`;
-		}
-
-		return { ...details, params };
-	}
-
-	return getAbilityDetails(toolName);
+/** Status key → user-facing label for the simple typing state (single place for copy; i18n-ready). */
+const STATUS_LABELS = {
+	[TYPING_STATUS.PROCESSING]: __("Processing…", "wp-module-ai-chat"),
+	[TYPING_STATUS.CONNECTING]: __("Getting your site ready…", "wp-module-ai-chat"),
+	[TYPING_STATUS.WS_CONNECTING]: __("Connecting…", "wp-module-ai-chat"),
+	[TYPING_STATUS.TOOL_CALL]: __("Looking this up…", "wp-module-ai-chat"),
+	[TYPING_STATUS.WORKING]: __("Almost there…", "wp-module-ai-chat"),
+	[TYPING_STATUS.RECEIVED]: __("Message received", "wp-module-ai-chat"),
+	[TYPING_STATUS.GENERATING]: __("Thinking…", "wp-module-ai-chat"),
+	[TYPING_STATUS.SUMMARIZING]: __("Summarizing results", "wp-module-ai-chat"),
+	[TYPING_STATUS.COMPLETED]: __("Processing", "wp-module-ai-chat"),
+	[TYPING_STATUS.FAILED]: __("Error occurred", "wp-module-ai-chat"),
 };
 
 /**
@@ -160,13 +104,12 @@ const ToolExecutionItem = ({ tool, isActive, progress, isComplete, isError }) =>
  *
  * Displays an animated typing indicator with spinner and real-time progress.
  *
- * @param {Object} props                  - The component props.
- * @param {string} props.status           - The current status.
- * @param {Object} props.activeToolCall   - The currently executing tool call.
- * @param {string} props.toolProgress     - Real-time progress message.
- * @param {Array}  props.executedTools    - List of already executed tools.
- * @param {Array}  props.pendingTools     - List of pending tools to execute.
- * @param {string} props.reasoningContent - The reasoning content.
+ * @param {Object} props                - The component props.
+ * @param {string} props.status         - The current status.
+ * @param {Object} props.activeToolCall - The currently executing tool call.
+ * @param {string} props.toolProgress   - Real-time progress message.
+ * @param {Array}  props.executedTools  - List of already executed tools.
+ * @param {Array}  props.pendingTools   - List of pending tools to execute.
  * @return {JSX.Element} The TypingIndicator component.
  */
 const TypingIndicator = ({
@@ -175,11 +118,12 @@ const TypingIndicator = ({
 	toolProgress = null,
 	executedTools = [],
 	pendingTools = [],
-	reasoningContent = "",
 }) => {
 	const [isExpanded, setIsExpanded] = useState(true);
 	const isExecuting = !!activeToolCall;
-	const isBetweenBatches = !isExecuting && status === "summarizing" && executedTools.length > 0;
+	// Show "summarizing" state when waiting between tool batch and final response.
+	const isBetweenBatches =
+		!isExecuting && status === TYPING_STATUS.SUMMARIZING && executedTools.length > 0;
 
 	useEffect(() => {
 		if (isExecuting || isBetweenBatches) {
@@ -188,24 +132,10 @@ const TypingIndicator = ({
 	}, [isExecuting, isBetweenBatches]);
 
 	const getStatusText = () => {
-		switch (status) {
-			case "received":
-				return __("Message received", "wp-module-ai-chat");
-			case "generating":
-				return __("Thinking", "wp-module-ai-chat");
-			case "tool_call":
-				return __("Executing actions", "wp-module-ai-chat");
-			case "summarizing":
-				return __("Processing", "wp-module-ai-chat");
-			case "completed":
-				return __("Processing", "wp-module-ai-chat");
-			case "failed":
-				return __("Error occurred", "wp-module-ai-chat");
-			default:
-				return __("Thinking", "wp-module-ai-chat");
-		}
+		return STATUS_LABELS[status] ?? __("Thinking…", "wp-module-ai-chat");
 	};
 
+	// Show expandable tool list when any tools are active, done, or queued.
 	const hasToolActivity = activeToolCall || executedTools.length > 0 || pendingTools.length > 0;
 	const totalTools = executedTools.length + (activeToolCall ? 1 : 0) + pendingTools.length;
 
@@ -323,12 +253,13 @@ const TypingIndicator = ({
 		<div className="nfd-ai-chat-message nfd-ai-chat-message--assistant">
 			<div className="nfd-ai-chat-message__content">
 				<div className="nfd-ai-chat-typing-indicator">
-					<Loader2 className="nfd-ai-chat-typing-indicator__spinner" size={16} />
+					<span className="nfd-ai-chat-typing-indicator__dots" aria-hidden="true">
+						<span></span>
+						<span></span>
+						<span></span>
+					</span>
 					<span className="nfd-ai-chat-typing-indicator__text">{getStatusText()}</span>
 				</div>
-				{reasoningContent && (
-					<div className="nfd-ai-chat-typing-indicator__reasoning">{reasoningContent}</div>
-				)}
 			</div>
 		</div>
 	);
