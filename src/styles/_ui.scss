@@ -9,7 +9,7 @@
 	transition: transform 0.2s ease, box-shadow 0.2s ease;
 
 	svg {
-		fill: currentColor;
+		fill: currentcolor;
 	}
 }
 
@@ -24,7 +24,7 @@
 	flex-shrink: 0;
 }
 
-/* Header logo: no background, plain icon — higher specificity to override brand styles */
+/* Header logo: no background, plain icon (override brand) */
 .nfd-ai-chat-header .nfd-ai-chat-header__brand .nfd-ai-chat-avatar {
 	background: none;
 	color: var(--nfd-ai-chat-color-text, #1e1e1e);
@@ -66,13 +66,13 @@
 	transition: background-color 0.15s ease, color 0.15s ease;
 }
 
-.nfd-ai-chat-header__btn:hover:not(:disabled) {
-	background-color: var(--nfd-ai-chat-color-background, #f5f5f5);
-}
-
 .nfd-ai-chat-header__btn:disabled {
 	opacity: 0.5;
 	cursor: not-allowed;
+}
+
+.nfd-ai-chat-header__btn:hover:not(:disabled) {
+	background-color: var(--nfd-ai-chat-color-background, #f5f5f5);
 }
 
 .nfd-ai-chat-header__btn--new {
@@ -85,7 +85,7 @@
 	display: block;
 }
 
-/* BETA badge - single solid dark blue pill (matches screenshot and editor-chat sidebar) */
+/* BETA badge - solid dark blue pill (matches editor-chat sidebar) */
 .nfd-ai-chat-blu-beta-badge {
 	display: inline-flex;
 	align-items: center;
@@ -170,63 +170,4 @@
 
 .nfd-ai-chat-suggestion__text {
 	white-space: nowrap;
-}
-
-/* Tool Status Line */
-.nfd-ai-chat-tool-status-line {
-	display: flex;
-	align-items: center;
-	gap: 6px;
-	margin-top: 8px;
-	padding-top: 8px;
-	border-top: 1px solid var(--nfd-ai-chat-color-border);
-	font-size: var(--nfd-ai-chat-font-size-sm);
-	color: var(--nfd-ai-chat-color-grey-dark);
-}
-
-.nfd-ai-chat-tool-status-line__icon {
-	color: var(--nfd-ai-chat-color-success);
-	flex-shrink: 0;
-
-	&--error {
-		color: var(--nfd-ai-chat-color-error);
-	}
-}
-
-.nfd-ai-chat-tool-status-line__text {
-	color: var(--nfd-ai-chat-color-grey-dark);
-}
-
-/* Clear Chat Button */
-.nfd-clear-chat-button {
-	padding: 8px 12px;
-	font-size: 12px;
-	border: 1px solid var(--nfd-ai-chat-color-border);
-	border-radius: var(--nfd-ai-chat-radius-sm);
-	background: var(--nfd-ai-chat-color-white);
-	cursor: pointer;
-	color: var(--nfd-ai-chat-color-text-secondary);
-	transition: all 0.2s ease;
-	font-family: inherit;
-	white-space: nowrap;
-
-	&:hover {
-		background: var(--nfd-ai-chat-color-background);
-		border-color: var(--nfd-ai-chat-color-grey-medium);
-		color: var(--nfd-ai-chat-color-text);
-	}
-
-	&:active {
-		transform: scale(0.98);
-	}
-
-	&:focus {
-		outline: 2px solid var(--nfd-ai-chat-color-primary);
-		outline-offset: 2px;
-	}
-
-	&:disabled {
-		opacity: 0.5;
-		cursor: not-allowed;
-	}
 }

@@ -148,6 +148,13 @@
 	stroke: var(--nfd-ai-chat-color-error);
 	color: var(--nfd-ai-chat-color-error);
 
+	&:disabled,
+	&[aria-busy="true"] {
+		opacity: 0.5;
+		cursor: not-allowed;
+		pointer-events: none;
+	}
+
 	&:hover:not(:disabled) {
 		background: var(--nfd-ai-chat-color-error-alpha-10);
 		stroke: var(--nfd-ai-chat-color-error-hover);
@@ -159,12 +166,5 @@
 	&:active:not(:disabled) {
 		transform: translateY(0);
 		background: var(--nfd-ai-chat-color-error-alpha-15);
-	}
-
-	&:disabled,
-	&[aria-busy="true"] {
-		opacity: 0.5;
-		cursor: not-allowed;
-		pointer-events: none;
 	}
 }

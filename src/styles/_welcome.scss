@@ -23,7 +23,7 @@
 	margin-bottom: 24px;
 }
 
-/* Purplish gradient logo on welcome — higher specificity to override brand styles */
+/* Purplish gradient logo on welcome — higher specificity to override brand */
 .nfd-ai-chat-welcome .nfd-ai-chat-welcome__avatar .nfd-ai-chat-avatar {
 	background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
 	color: #fff;
@@ -54,15 +54,17 @@
 	height: 1em;
 	margin-left: 2px;
 	vertical-align: text-bottom;
-	background: currentColor;
+	background: currentcolor;
 	animation: nfd-ai-chat-cursor-blink 0.8s step-end infinite;
 }
 
 @keyframes nfd-ai-chat-cursor-blink {
+
 	0%,
 	50% {
 		opacity: 1;
 	}
+
 	51%,
 	100% {
 		opacity: 0;

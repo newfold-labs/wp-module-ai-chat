@@ -5,6 +5,8 @@
  * Use this as a foundation for editor chat, help center chat, and other AI interfaces.
  */
 
+import "./styles/app.scss";
+
 // Services
 export { WordPressMCPClient, createMCPClient, mcpClient, MCPError } from "./services/mcpClient";
 

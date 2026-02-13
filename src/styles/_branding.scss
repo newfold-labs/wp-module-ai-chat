@@ -44,26 +44,19 @@
 		border-top: 1px solid var(--nfd-ai-chat-color-border);
 		box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.04);
 
-		.nfd-ai-chat-input__field {
-
-			&:focus {
-				border-color: var(--nfd-ai-chat-color-primary);
-				box-shadow: 0 0 0 3px var(--nfd-ai-chat-color-primary-light-12);
-			}
+		.nfd-ai-chat-input__textarea:focus {
+			outline: none;
 		}
 
-		.nfd-ai-chat-input__send-button {
+		.components-button.nfd-ai-chat-input__submit:hover:not(:disabled) {
+			background: var(--nfd-ai-chat-color-primary-hover);
+			transform: translateY(-1px);
+			box-shadow: var(--nfd-ai-chat-shadow-md);
+		}
 
-			&:hover:not(:disabled) {
-				background: var(--nfd-ai-chat-color-primary-hover);
-				transform: translateY(-1px);
-				box-shadow: var(--nfd-ai-chat-shadow-md);
-			}
-
-			&:active:not(:disabled) {
-				background: var(--nfd-ai-chat-color-primary-active);
-				transform: translateY(0);
-			}
+		.components-button.nfd-ai-chat-input__submit:active:not(:disabled) {
+			background: var(--nfd-ai-chat-color-primary-active);
+			transform: translateY(0);
 		}
 	}
 
@@ -98,16 +91,14 @@
 		}
 	}
 
-	/* Enhanced typing indicator */
-	.nfd-ai-chat-typing-indicator {
-
-		.nfd-ai-chat-typing-indicator__dot {
-			background: var(--nfd-ai-chat-color-primary);
-		}
+	/* Enhanced typing indicator dots (spans inside __dots) */
+	.nfd-ai-chat-typing-indicator .nfd-ai-chat-typing-indicator__dots span {
+		background: var(--nfd-ai-chat-color-primary);
 	}
 
-	/* Professional scrollbar styling */
+	/* Professional scrollbar and message area */
 	.nfd-ai-chat-messages {
+		background: var(--nfd-ai-chat-color-white);
 
 		&::-webkit-scrollbar {
 			width: 8px;
@@ -125,22 +116,6 @@
 				background: var(--nfd-ai-chat-color-grey-medium);
 			}
 		}
-	}
-
-	/* Enhanced input field focus states */
-	.nfd-ai-chat-input__field {
-		transition: border-color 0.15s ease, box-shadow 0.15s ease;
-
-		&:focus {
-			outline: none;
-			border-color: var(--nfd-ai-chat-color-primary);
-			box-shadow: 0 0 0 3px var(--nfd-ai-chat-color-primary-light-12);
-		}
-	}
-
-	/* Professional message area */
-	.nfd-ai-chat-messages {
-		background: var(--nfd-ai-chat-color-white);
 	}
 
 	/* Enhanced blockquote styling */
