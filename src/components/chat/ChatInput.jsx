@@ -37,8 +37,8 @@ const ChatInput = ({
 	contextComponent = null,
 	showTopBorder = true,
 }) => {
-	// Show stop button only when explicitly requested (e.g. generating), not when disabled for connecting
-	const showStop = showStopButton ?? disabled;
+	// Show stop button only when explicitly requested (e.g. generating), not when disabled for connecting/failed
+	const showStop = showStopButton === true;
 	const [message, setMessage] = useState("");
 	const [isStopping, setIsStopping] = useState(false);
 	const textareaRef = useRef(null);
@@ -142,7 +142,7 @@ const ChatInput = ({
 							label={__("Send message", "wp-module-ai-chat")}
 							onClick={handleSubmit}
 							className="nfd-ai-chat-input__submit"
-							disabled={!message.trim()}
+							disabled={!message.trim() || disabled}
 						/>
 					)}
 				</div>

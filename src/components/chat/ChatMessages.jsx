@@ -7,6 +7,7 @@ import { __ } from "@wordpress/i18n";
 /**
  * Internal dependencies
  */
+import classnames from "classnames";
 import ErrorAlert from "../ui/ErrorAlert";
 import TypingIndicator from "../ui/TypingIndicator";
 import ChatMessage from "./ChatMessage";
@@ -26,8 +27,10 @@ import ChatMessage from "./ChatMessage";
  * @param {string}   props.toolProgress       - Real-time progress message (optional).
  * @param {Array}    props.executedTools      - List of completed tool executions (optional).
  * @param {Array}    props.pendingTools       - List of pending tools to execute (optional).
- * @param {Function} [props.onRetry]          - Callback when user clicks Retry (e.g. after connection failed).
- * @param {boolean}  [props.connectionFailed] - Whether connection has failed (show Retry without red error).
+ * @param {Function} [props.onRetry]                  - Callback when user clicks Retry (e.g. after connection failed).
+ * @param {boolean}  [props.connectionFailed]         - Whether connection has failed (show Retry without red error).
+ * @param {boolean}  [props.isConnectingOrReconnecting] - When true, show a single "Connecting...." assistant message.
+ * @param {string}   [props.messageBubbleStyle]       - 'bubbles' (default) or 'minimal'. Controls container and message bubble styling.
  * @return {JSX.Element} The ChatMessages component.
  */
 const ChatMessages = ({
@@ -41,6 +44,8 @@ const ChatMessages = ({
 	pendingTools = [],
 	onRetry,
 	connectionFailed = false,
+	isConnectingOrReconnecting = false,
+	messageBubbleStyle = "bubbles",
 }) => {
 	const scrollContainerRef = useRef(null);
 	const [scrollTrigger, setScrollTrigger] = useState(0);
@@ -69,8 +74,12 @@ const ChatMessages = ({
 	const hasActiveToolExecution =
 		activeToolCall || executedTools.length > 0 || pendingTools.length > 0;
 
+	const messagesClassName = classnames("nfd-ai-chat-messages", {
+		"nfd-ai-chat-messages--minimal": messageBubbleStyle === "minimal",
+	});
+
 	return (
-		<div ref={scrollContainerRef} className="nfd-ai-chat-messages">
+		<div ref={scrollContainerRef} className={messagesClassName}>
 			{messages.length > 0 &&
 				messages.map((msg, index) => {
 					// Animate typing only for the last assistant message that was received live (not loaded from history/restore)
@@ -88,6 +97,22 @@ const ChatMessages = ({
 						/>
 					);
 				})}
+			{isConnectingOrReconnecting && !connectionFailed && (
+				<div className="nfd-ai-chat-message nfd-ai-chat-message--assistant">
+					<div className="nfd-ai-chat-message__content">
+						<div className="nfd-ai-chat-typing-indicator">
+							<span className="nfd-ai-chat-typing-indicator__dots" aria-hidden="true">
+								<span></span>
+								<span></span>
+								<span></span>
+							</span>
+							<span className="nfd-ai-chat-typing-indicator__text">
+								{__("Connecting....", "wp-module-ai-chat")}
+							</span>
+						</div>
+					</div>
+				</div>
+			)}
 			{error && <ErrorAlert message={error} />}
 			{onRetry && (error || connectionFailed) && (
 				<p className="nfd-ai-chat-messages__retry">

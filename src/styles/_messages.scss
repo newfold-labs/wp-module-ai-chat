@@ -33,6 +33,24 @@
 			text-decoration: none;
 		}
 	}
+
+	// Minimal style: transparent container; user = grey bubble only; assistant = no background (plain text).
+	&--minimal {
+		background: transparent;
+
+		.nfd-ai-chat-message--assistant .nfd-ai-chat-message__content {
+			background: transparent;
+			border: none;
+			box-shadow: none;
+			padding: 4px 0 0 0;
+		}
+
+		.nfd-ai-chat-message--user .nfd-ai-chat-message__content {
+			background: var(--nfd-ai-chat-color-background);
+			color: var(--nfd-ai-chat-color-text);
+			box-shadow: none;
+		}
+	}
 }
 
 .nfd-ai-chat-message {
