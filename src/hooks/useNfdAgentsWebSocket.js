@@ -41,7 +41,6 @@ import { generateSessionId } from "../utils/helpers";
  * @param {string}   options.consumer                             Consumer identifier. Required. Used for localStorage keys and sent to backend as query param. Valid values are defined by the backend.
  * @param {boolean}  [options.autoConnect=false]                  Whether to connect automatically
  * @param {string}   [options.consumerType]                       Consumer type; passed to backend as `wordpress_${consumerType}`. Defaults to 'editor_chat'.
- * @param {string}   [options.siteUrlOverride]                     Optional. When set, used as site_url in the WebSocket URL instead of config.site_url (e.g. for testing).
  * @param {boolean}  [options.autoLoadHistory=true]               Whether to auto-load chat history from localStorage on mount.
  *                                                                Set to false to start with empty chat but keep history in storage for later access.
  * @param {Function} [options.getConnectionFailedFallbackMessage] Optional. When connection has failed (e.g. after max
@@ -54,7 +53,6 @@ const useNfdAgentsWebSocket = ({
 	consumer,
 	autoConnect = false,
 	consumerType = "editor_chat",
-	siteUrlOverride,
 	autoLoadHistory = true,
 	getConnectionFailedFallbackMessage,
 } = {}) => {
@@ -216,11 +214,8 @@ const useNfdAgentsWebSocket = ({
 				sessionIdRef.current = generateSessionId();
 			}
 
-			// Build WebSocket URL (optional siteUrlOverride for testing / hardcoding)
-			const configForUrl = siteUrlOverride != null
-				? { ...config, site_url: siteUrlOverride }
-				: config;
-			const wsUrl = buildWebSocketUrl(configForUrl, sessionIdRef.current, consumerType);
+			// Build WebSocket URL from config (site_url comes from config endpoint)
+			const wsUrl = buildWebSocketUrl(config, sessionIdRef.current, consumerType);
 
 			const ws = new WebSocket(wsUrl);
 			wsRef.current = ws;
