@@ -6,6 +6,70 @@
  */
 
 /**
+ * Words to strip from the end of a URL when they were incorrectly included
+ * (e.g. ?p=58Is, path/If, or after newline). Primary fix: words *after* the URL.
+ * Also used for leading cases: Wordhttp:// and markdown [Word http](url).
+ */
+const SENTENCE_STARTER_WORDS_AFTER_URL = [
+	"Would",
+	"If",
+	"Like",
+	"And",
+	"But",
+	"Or",
+	"So",
+	"Maybe",
+	"Perhaps",
+	"Well",
+	"Yes",
+	"No",
+	"When",
+	"Where",
+	"How",
+	"Why",
+	"It",
+	"To",
+	"We",
+	"Do",
+	"Be",
+	"As",
+	"An",
+	"The",
+	"You",
+	"In",
+	"On",
+	"At",
+	"By",
+	"Is",
+];
+
+/** Word immediately followed by http(s) (no space) - pre-pass insert space. */
+const WORD_BEFORE_URL_NO_SPACE = new RegExp(
+	`\\b(${SENTENCE_STARTER_WORDS_AFTER_URL.join("|")})(https?:\\/\\/)`,
+	"gi"
+);
+
+/** One or more prose words + spaces, then rest - for trimming markdown link text. */
+const PROSE_WORDS_THEN_URL = new RegExp(
+	`^((${SENTENCE_STARTER_WORDS_AFTER_URL.join("|")})\\s+)+(.+)$`,
+	"i"
+);
+
+/** Trailing /Word at end of URL (e.g. path/If) - strip Word from URL. */
+const TRAILING_SLASH_WORD = new RegExp(
+	`\\/(${SENTENCE_STARTER_WORDS_AFTER_URL.join("|")})$`,
+	"i"
+);
+
+/** Trailing digit+Word at end of URL (e.g. ?p=58Is) - strip Word from URL. */
+const TRAILING_DIGIT_WORD = new RegExp(
+	`(\\d)(${SENTENCE_STARTER_WORDS_AFTER_URL.join("|")})$`,
+	"i"
+);
+
+const URL_ONLY_PATTERN = /^https?:\/\/[^\s<>"]+$/;
+
+/**
  * Check if a string contains markdown syntax
  *
  * @param {string} text - The text to check
@@ -77,10 +141,32 @@ export function parseMarkdown(text) {
 	html = html.replace(/(?<![*_])\*(?!\*)([^*\n]+)(?<!\*)\*(?!\*)/g, "<em>$1</em>");
 	html = html.replace(/(?<![_*])_(?!_)([^_\n]+)(?<!_)_(?!_)/g, "<em>$1</em>");
 
-	// Links [text](url)
+	// Links [text](url) - trim leading prose words from link text when rest is a URL
 	html = html.replace(
 		/\[([^\]]+)\]\(([^)]+)\)/g,
-		'<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>'
+		(match, text, url) => {
+			const trimmedText = text.trim();
+			const leadingMatch = trimmedText.match(PROSE_WORDS_THEN_URL);
+			const rest = leadingMatch ? leadingMatch[3].trim() : "";
+			const isRestUrl =
+				rest && (URL_ONLY_PATTERN.test(rest) || /^https?:\/\//.test(rest));
+			const safeHref = url.replace(/"/g, "&quot;");
+			if (leadingMatch && isRestUrl) {
+				const leadingWords = leadingMatch[1];
+				const safeUrlText = rest
+					.replace(/&/g, "&amp;")
+					.replace(/</g, "&lt;")
+					.replace(/>/g, "&gt;")
+					.replace(/"/g, "&quot;");
+				return `${leadingWords}<a href="${safeHref}" target="_blank" rel="noopener noreferrer">${safeUrlText}</a>`;
+			}
+			const safeText = text
+				.replace(/&/g, "&amp;")
+				.replace(/</g, "&lt;")
+				.replace(/>/g, "&gt;")
+				.replace(/"/g, "&quot;");
+			return `<a href="${safeHref}" target="_blank" rel="noopener noreferrer">${safeText}</a>`;
+		}
 	);
 
 	// Unordered lists - collect consecutive list items
@@ -186,31 +272,44 @@ export function linkifyUrls(text) {
 	if (!text || typeof text !== "string") {
 		return "";
 	}
-	// Match http(s) URLs, including when broken across lines (optional \n + continuation)
-	const urlPattern = /(https?:\/\/[^\s<>"]*(?:\n[^\s<>"]*)*)/g;
-	return text.replace(urlPattern, (fullMatch) => {
-		// Normalize: remove internal whitespace/newlines so href is valid
-		const normalized = fullMatch.replace(/\s+/g, "").trim();
-		let trimmed = normalized.replace(/[.,;:!?)\]]+$/, "");
-		// Strip trailing /Word when Word looks like start of next sentence (e.g. "...testing/If you"); keep the word for output
-		const sentenceStarterMatch = trimmed.match(
-			/\/(If|It|To|We|So|Or|In|On|At|By|Do|Be|As|An|The|You)$/i
-		);
-		const wordAfterLink = sentenceStarterMatch ? sentenceStarterMatch[1] : "";
-		if (wordAfterLink) {
-			trimmed = trimmed.replace(/\/(If|It|To|We|So|Or|In|On|At|By|Do|Be|As|An|The|You)$/i, "");
+	// Pre-pass: insert space between leading word and "http(s)://" so "Wouldhttp://" -> "Would http://"
+	let normalizedText = text.replace(
+		WORD_BEFORE_URL_NO_SPACE,
+		"$1 $2"
+	);
+	// Match URL only at start or after whitespace/opening punctuation (word boundary)
+	const urlPatternWithBoundary =
+		/(^|[\s(\["'])(https?:\/\/[^\s<>"]*(?:\n[^\s<>"]*)*)/g;
+	return normalizedText.replace(
+		urlPatternWithBoundary,
+		(fullMatch, before, url) => {
+			// Normalize: remove internal whitespace/newlines so href is valid
+			const normalized = url.replace(/\s+/g, "").trim();
+			let trimmed = normalized.replace(/[.,;:!?)\]]+$/, "");
+			let wordAfterLink = "";
+			// Strip trailing /Word or digit+Word (words after URL glued in - e.g. ".../If" or "?p=58Is")
+			const slashMatch = trimmed.match(TRAILING_SLASH_WORD);
+			if (slashMatch) {
+				wordAfterLink = slashMatch[1];
+				trimmed = trimmed.replace(TRAILING_SLASH_WORD, "");
+			}
+			const digitWordMatch = trimmed.match(TRAILING_DIGIT_WORD);
+			if (digitWordMatch) {
+				wordAfterLink = digitWordMatch[2];
+				trimmed = trimmed.replace(TRAILING_DIGIT_WORD, "$1");
+			}
+			if (!trimmed) {
+				return fullMatch;
+			}
+			const safeHref = trimmed.replace(/"/g, "&quot;");
+			const safeText = trimmed
+				.replace(/&/g, "&amp;")
+				.replace(/</g, "&lt;")
+				.replace(/>/g, "&gt;")
+				.replace(/"/g, "&quot;");
+			return `${before ?? ""}<a href="${safeHref}" target="_blank" rel="noopener noreferrer">${safeText}</a>${wordAfterLink ? " " + wordAfterLink : ""}`;
 		}
-		if (!trimmed) {
-			return fullMatch;
-		}
-		const safeHref = trimmed.replace(/"/g, "&quot;");
-		const safeText = trimmed
-			.replace(/&/g, "&amp;")
-			.replace(/</g, "&lt;")
-			.replace(/>/g, "&gt;")
-			.replace(/"/g, "&quot;");
-		return `<a href="${safeHref}" target="_blank" rel="noopener noreferrer">${safeText}</a>${wordAfterLink ? " " + wordAfterLink : ""}`;
-	});
+	);
 }
 
 export default {
