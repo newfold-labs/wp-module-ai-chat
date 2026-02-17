@@ -5,19 +5,21 @@ namespace NewfoldLabs\WP\Module\AIChat\Helpers;
 use WP_Error;
 
 /**
- * Helper for resolving HUAPI JWT (debug constant, transient cache, or Hiive API).
+ * Helper for resolving Jarvis JWT for NFD Agents backend authentication.
+ *
+ * Returns the Identity Service JWT (jarvis_jwt) from Hiive customer API.
  */
-class HuapiHelper {
+class JarvisJWTHelper {
 
 	/**
-	 * Transient key for caching the HUAPI JWT (12-hour TTL).
+	 * Transient key for caching the Jarvis JWT (12-hour TTL).
 	 *
 	 * @var string
 	 */
 	const TRANSIENT_KEY_JWT = 'nfd_ai_chat_jarvis_jwt';
 
 	/**
-	 * Resolve HUAPI JWT: debug constant, transient cache, or Hiive API.
+	 * Resolve Jarvis JWT: debug constant, transient cache, or Hiive API (jarvis_jwt only).
 	 *
 	 * @return string|WP_Error Token string or error.
 	 */
@@ -36,21 +38,24 @@ class HuapiHelper {
 
 		if ( is_wp_error( $customer_data ) ) {
 			return new WP_Error(
-				'huapi_token_fetch_failed',
-				__( 'Failed to fetch authentication token', 'nfd-editor-chat' ),
+				'jarvis_jwt_fetch_failed',
+				__( 'Failed to fetch authentication token', 'nfd-ai-chat' ),
 				array( 'status' => 500 )
 			);
 		}
 
-		if ( empty( $customer_data['huapi_token'] ) ) {
+		$token = isset( $customer_data['jarvis_jwt'] ) && is_string( $customer_data['jarvis_jwt'] ) && $customer_data['jarvis_jwt'] !== ''
+			? $customer_data['jarvis_jwt']
+			: '';
+
+		if ( '' === $token ) {
 			return new WP_Error(
-				'huapi_token_fetch_failed',
-				__( 'Failed to fetch authentication token', 'nfd-editor-chat' ),
+				'jarvis_jwt_fetch_failed',
+				__( 'Failed to fetch authentication token', 'nfd-ai-chat' ),
 				array( 'status' => 500 )
 			);
 		}
 
-		$token = $customer_data['huapi_token'];
 		set_transient( self::TRANSIENT_KEY_JWT, $token, 12 * HOUR_IN_SECONDS );
 
 		return $token;

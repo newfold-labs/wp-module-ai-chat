@@ -5,7 +5,7 @@ namespace NewfoldLabs\WP\Module\AIChat\RestApi;
 use NewfoldLabs\WP\Module\Data\SiteCapabilities;
 use NewfoldLabs\WP\Module\AIChat\Helpers\BrandHelper;
 use NewfoldLabs\WP\Module\AIChat\Helpers\ConsumerCapabilitiesHelper;
-use NewfoldLabs\WP\Module\AIChat\Helpers\HuapiHelper;
+use NewfoldLabs\WP\Module\AIChat\Helpers\JarvisJWTHelper;
 use NewfoldLabs\WP\Module\AIChat\Helpers\NfdAgentsGatewayHelper;
 use NewfoldLabs\WP\Module\AIChat\Helpers\SiteHashHelper;
 use NewfoldLabs\WP\ModuleLoader\Container;
@@ -44,11 +44,11 @@ class NfdAgentsChatConfigController extends WP_REST_Controller {
 	protected $container;
 
 	/**
-	 * HUAPI JWT helper.
+	 * Jarvis JWT helper.
 	 *
-	 * @var HuapiHelper
+	 * @var JarvisJWTHelper
 	 */
-	protected $huapi_helper;
+	protected $jarvis_jwt_helper;
 
 	/**
 	 * Brand resolution helper.
@@ -78,7 +78,7 @@ class NfdAgentsChatConfigController extends WP_REST_Controller {
 	 */
 	public function __construct( Container $container ) {
 		$this->container           = $container;
-		$this->huapi_helper        = new HuapiHelper();
+		$this->jarvis_jwt_helper   = new JarvisJWTHelper();
 		$this->brand_helper        = new BrandHelper( $container );
 		$this->capabilities_helper = new ConsumerCapabilitiesHelper();
 		$this->gateway_helper      = new NfdAgentsGatewayHelper();
@@ -147,9 +147,9 @@ class NfdAgentsChatConfigController extends WP_REST_Controller {
 			);
 		}
 
-		$huapi_token = $this->huapi_helper->get_token();
-		if ( is_wp_error( $huapi_token ) ) {
-			return $huapi_token;
+		$jarvis_jwt = $this->jarvis_jwt_helper->get_token();
+		if ( is_wp_error( $jarvis_jwt ) ) {
+			return $jarvis_jwt;
 		}
 
 		$site_url = get_site_url();
@@ -157,7 +157,7 @@ class NfdAgentsChatConfigController extends WP_REST_Controller {
 		return new WP_REST_Response(
 			array(
 				'gateway_url' => $gateway_url,
-				'huapi_token' => $huapi_token,
+				'jarvis_jwt'  => $jarvis_jwt,
 				'site_url'    => $site_url,
 				'brand_id'    => $this->brand_helper->get_brand_id(),
 				'agent_type'  => 'blu',

@@ -118,7 +118,7 @@ export async function fetchAgentConfig({ configEndpoint, consumer }) {
 				"Gateway URL not configured. Set NFD_AGENTS_CHAT_GATEWAY_URL in wp-config.php.",
 				"wp-module-ai-chat"
 			);
-		} else if (err.code === "huapi_token_fetch_failed") {
+		} else if (err.code === "jarvis_jwt_fetch_failed" || err.code === "huapi_token_fetch_failed") {
 			errorMessage = __(
 				"Failed to fetch authentication token from Hiive. Check your connection or set NFD_AGENTS_CHAT_DEBUG_TOKEN for local development.",
 				"wp-module-ai-chat"
