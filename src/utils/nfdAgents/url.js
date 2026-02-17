@@ -55,7 +55,8 @@ export const isLocalhost = (url) => {
  * @param {string} config.gateway_url Gateway HTTP(S) URL
  * @param {string} config.brand_id    Brand identifier
  * @param {string} config.agent_type  Agent type (may be 'nfd-agents' alias)
- * @param {string} config.huapi_token Auth token
+ * @param {string} config.jarvis_jwt  Jarvis JWT for agents backend auth (backend returns this key)
+ * @param {string} config.huapi_token Optional alias for token (e.g. NFD_AGENTS_CHAT_DEBUG_TOKEN)
  * @param {string} sessionId          Session ID for the connection
  * @param {string} consumerType       Consumer type; passed to gateway as wordpress_${consumerType}
  * @return {string} Full WebSocket URL with query parameters
@@ -64,8 +65,9 @@ export const buildWebSocketUrl = (config, sessionId, consumerType) => {
 	const wsBaseUrl = convertToWebSocketUrl(config.gateway_url);
 	const agentType = (config.agent_type === "nfd-agents" ? "blu" : config.agent_type) || "blu";
 	const consumer = `wordpress_${consumerType}`;
+	const token = config.huapi_token ?? config.jarvis_jwt ?? "";
 
-	let url = `${wsBaseUrl}/${config.brand_id}/agents/${agentType}/v1/ws?session_id=${sessionId}&token=${encodeURIComponent(config.huapi_token)}&consumer=${encodeURIComponent(consumer)}`;
+	let url = `${wsBaseUrl}/${config.brand_id}/agents/${agentType}/v1/ws?session_id=${sessionId}&token=${encodeURIComponent(token)}&consumer=${encodeURIComponent(consumer)}`;
 	if (config.site_url && typeof config.site_url === "string" && config.site_url.trim()) {
 		url += `&site_url=${encodeURIComponent(config.site_url.trim())}`;
 	}
