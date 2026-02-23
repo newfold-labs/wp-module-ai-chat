@@ -30,7 +30,10 @@ class JarvisJWTHelper {
 
 		$token = get_transient( self::TRANSIENT_KEY_JWT );
 		if ( false !== $token && '' !== $token ) {
-			return $token;
+			if ( $this->get_seconds_until_expiry( $token ) > 0 ) {
+				return $token;
+			}
+			delete_transient( self::TRANSIENT_KEY_JWT );
 		}
 
 		$hiive_helper  = new HiiveHelper( '/sites/v1/customer', array(), 'GET' );
@@ -44,7 +47,7 @@ class JarvisJWTHelper {
 			);
 		}
 
-		$token = isset( $customer_data['jarvis_jwt'] ) && is_string( $customer_data['jarvis_jwt'] ) && $customer_data['jarvis_jwt'] !== ''
+		$token = isset( $customer_data['jarvis_jwt'] ) && is_string( $customer_data['jarvis_jwt'] ) && '' !== $customer_data['jarvis_jwt']
 			? $customer_data['jarvis_jwt']
 			: '';
 
@@ -56,8 +59,51 @@ class JarvisJWTHelper {
 			);
 		}
 
-		set_transient( self::TRANSIENT_KEY_JWT, $token, 12 * HOUR_IN_SECONDS );
+		$ttl               = 12 * HOUR_IN_SECONDS;
+		$seconds_until_exp = $this->get_seconds_until_expiry( $token );
+		if ( $seconds_until_exp > 0 ) {
+			// Optional: expire transient 5 min before JWT so config fetches get a fresh token without relying on on-read expiry.
+			$seconds_until_exp_buffered = max( 0, $seconds_until_exp - 300 );
+			$ttl                        = min( 12 * HOUR_IN_SECONDS, $seconds_until_exp_buffered );
+			// Guard: WordPress treats TTL 0 as "never expire"; keep 12h fallback if TTL would be non-positive.
+			if ( $ttl <= 0 ) {
+				$ttl = 12 * HOUR_IN_SECONDS;
+			}
+		}
+		set_transient( self::TRANSIENT_KEY_JWT, $token, $ttl );
 
 		return $token;
+	}
+
+	/**
+	 * Get seconds until JWT expiry from payload exp claim (base64url decode, no full JWT library).
+	 *
+	 * @param string $token JWT string.
+	 * @return int Seconds until expiry; 0 or negative if expired, invalid, or missing exp.
+	 */
+	private function get_seconds_until_expiry( $token ) {
+		if ( ! is_string( $token ) || '' === $token ) {
+			return 0;
+		}
+		$parts = explode( '.', $token );
+		if ( count( $parts ) < 2 ) {
+			return 0;
+		}
+		$payload_b64 = $parts[1];
+		$payload_b64 = str_replace( array( '-', '_' ), array( '+', '/' ), $payload_b64 );
+		$pad         = strlen( $payload_b64 ) % 4;
+		if ( $pad ) {
+			$payload_b64 .= str_repeat( '=', 4 - $pad );
+		}
+		// phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_decode -- JWT payload is base64url-encoded; decoding is required and safe.
+		$payload_json = base64_decode( $payload_b64, true );
+		if ( false === $payload_json ) {
+			return 0;
+		}
+		$payload = json_decode( $payload_json, true );
+		if ( ! is_array( $payload ) || ! isset( $payload['exp'] ) || ! is_numeric( $payload['exp'] ) ) {
+			return 0;
+		}
+		return (int) $payload['exp'] - time();
 	}
 }

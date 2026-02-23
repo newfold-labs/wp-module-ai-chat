@@ -72,8 +72,8 @@ class HiiveHelper {
 
 		// Use provided parameters or fall back to constructor values
 		$method   = $method ? strtoupper( $method ) : $this->method;
-		$endpoint = $endpoint ?: $this->endpoint;
-		$body     = $body !== null ? $body : $this->body;
+		$endpoint = $endpoint ? $endpoint : $this->endpoint;
+		$body     = null !== $body ? $body : $this->body;
 
 		$url = $this->api_base_url . $endpoint;
 
@@ -102,6 +102,7 @@ class HiiveHelper {
 
 		$code = wp_remote_retrieve_response_code( $response );
 		if ( $code < 200 || $code >= 300 ) {
+			/* translators: %d: HTTP response code. */
 			return new \WP_Error( 'nfd_hiive_error', \sprintf( __( 'Hiive API returned HTTP %d.', 'wp-module-ai-chat' ), $code ) );
 		}
 

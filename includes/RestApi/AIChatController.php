@@ -52,33 +52,33 @@ class AIChatController extends WP_REST_Controller {
 					'callback'            => array( $this, 'proxy_ai_request' ),
 					'permission_callback' => array( $this, 'permissions_check' ),
 					'args'                => array(
-						'model'       => array(
+						'model'                 => array(
 							'description' => 'The AI model to use',
 							'type'        => 'string',
 							'required'    => false,
 							'default'     => 'gpt-4o-mini',
 						),
-						'messages'    => array(
+						'messages'              => array(
 							'description' => 'The chat messages array',
 							'type'        => 'array',
 							'required'    => true,
 						),
-						'tools'       => array(
+						'tools'                 => array(
 							'description' => 'Available tools/functions',
 							'type'        => 'array',
 							'required'    => false,
 						),
-						'tool_choice' => array(
+						'tool_choice'           => array(
 							'description' => 'Tool choice strategy',
 							'required'    => false,
 						),
-						'stream'      => array(
+						'stream'                => array(
 							'description' => 'Whether to stream the response',
 							'type'        => 'boolean',
 							'required'    => false,
 							'default'     => false,
 						),
-						'max_tokens'  => array(
+						'max_tokens'            => array(
 							'description' => 'Maximum tokens in response',
 							'type'        => 'integer',
 							'required'    => false,
@@ -88,7 +88,7 @@ class AIChatController extends WP_REST_Controller {
 							'type'        => 'integer',
 							'required'    => false,
 						),
-						'temperature' => array(
+						'temperature'           => array(
 							'description' => 'Temperature for response randomness',
 							'type'        => 'number',
 							'required'    => false,
@@ -119,7 +119,7 @@ class AIChatController extends WP_REST_Controller {
 
 		// Prepare request data
 		$request_data = array(
-			'model'    => $request->get_param( 'model' ) ?: 'gpt-4o-mini',
+			'model'    => $request->get_param( 'model' ) ? $request->get_param( 'model' ) : 'gpt-4o-mini',
 			'messages' => $this->sanitize_messages( $request->get_param( 'messages' ) ),
 		);
 
@@ -198,8 +198,8 @@ class AIChatController extends WP_REST_Controller {
 
 			// Handle content (can be string or null for tool calls)
 			if ( isset( $message['content'] ) ) {
-				$allowed_html       = wp_kses_allowed_html( 'post' );
-				$allowed_protocols  = array_merge( wp_allowed_protocols(), array( 'data' ) );
+				$allowed_html                 = wp_kses_allowed_html( 'post' );
+				$allowed_protocols            = array_merge( wp_allowed_protocols(), array( 'data' ) );
 				$sanitized_message['content'] = wp_kses( $message['content'], $allowed_html, $allowed_protocols );
 			}
 

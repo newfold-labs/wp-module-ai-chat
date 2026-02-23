@@ -251,7 +251,7 @@ class AiChatProxy {
 	 */
 	private function make_streaming_request( array $config, array $body ) {
 		// Raise memory limit for streaming — large block markup responses need headroom.
-		// phpcs:ignore WordPress.PHP.IniSet.memory_limit_Disallowed
+		// phpcs:ignore WordPress.PHP.IniSet.memory_limit_Disallowed, WordPress.PHP.NoSilencedErrors.Discouraged
 		@ini_set( 'memory_limit', '512M' );
 
 		// Extend execution time — complex page edits can produce long AI responses.
@@ -326,7 +326,7 @@ class AiChatProxy {
 		// Symfony/Laravel error handler output, and PHP fatal error text.
 		if ( preg_match( '/<!DOCTYPE|<html|sf-dump|<style|Fatal\s+Error|Maximum execution time/i', $data ) ) {
 			// Extract a useful error snippet from the HTML.
-			$snippet = strip_tags( $data );
+			$snippet = wp_strip_all_tags( $data );
 			$snippet = preg_replace( '/\s+/', ' ', trim( $snippet ) );
 			$snippet = substr( $snippet, 0, 200 );
 			$this->send_error_event( 'Upstream error: ' . $snippet );
@@ -334,7 +334,8 @@ class AiChatProxy {
 			return strlen( $data );
 		}
 
-		// Forward the data as-is (it's already in SSE format)
+		// Forward the data as-is (it's already in SSE format).
+		// phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- SSE stream; raw upstream chunks are intentionally sent.
 		echo $data;
 
 		if ( ob_get_level() > 0 ) {
@@ -365,6 +366,7 @@ class AiChatProxy {
 		// "data: {...}" line that was already sent to the client, producing
 		// unparseable JSON.
 		echo "\n\n";
+		// phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- SSE stream; JSON is from wp_json_encode.
 		echo "data: {$error_data}\n\n";
 		echo "data: [DONE]\n\n";
 
@@ -413,6 +415,7 @@ class AiChatProxy {
 			)
 		);
 
+		// phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- SSE stream; JSON is from wp_json_encode.
 		echo "data: {$error_data}\n\n";
 		echo "data: [DONE]\n\n";
 
