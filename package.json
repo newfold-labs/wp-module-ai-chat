@@ -27,7 +27,7 @@
 		"@wordpress/eslint-plugin": "^22.18.0",
 		"@wordpress/prettier-config": "^4.32.0",
 		"@wordpress/scripts": "^31.3.0",
-		"eslint": "^8.57.1",
+		"eslint": "^10.0.1",
 		"eslint-plugin-prettier": "^5.5.4",
 		"prettier": "^3.6.2"
 	},
