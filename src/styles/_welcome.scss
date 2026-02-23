@@ -4,8 +4,9 @@
 	align-items: center;
 	justify-content: center;
 	text-align: center;
-	padding: 40px 20px;
+	padding: var(--nfd-ai-chat-spacing-xl) var(--nfd-ai-chat-spacing-md);
 	flex: 1;
+	background: var(--nfd-ai-chat-color-white);
 }
 
 .nfd-ai-chat-welcome__content {
@@ -16,7 +17,17 @@
 }
 
 .nfd-ai-chat-welcome__avatar {
-	margin-bottom: 8px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	margin-bottom: 24px;
+}
+
+/* Purplish gradient logo on welcome — higher specificity to override brand */
+.nfd-ai-chat-welcome .nfd-ai-chat-welcome__avatar .nfd-ai-chat-avatar {
+	background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+	color: #fff;
+	box-shadow: none;
 }
 
 .nfd-ai-chat-welcome__message {
@@ -37,11 +48,34 @@
 	line-height: 1.5;
 }
 
+.nfd-ai-chat-welcome__cursor {
+	display: inline-block;
+	width: 2px;
+	height: 1em;
+	margin-left: 2px;
+	vertical-align: text-bottom;
+	background: currentcolor;
+	animation: nfd-ai-chat-cursor-blink 0.8s step-end infinite;
+}
+
+@keyframes nfd-ai-chat-cursor-blink {
+
+	0%,
+	50% {
+		opacity: 1;
+	}
+
+	51%,
+	100% {
+		opacity: 0;
+	}
+}
+
 .nfd-ai-chat-suggestions {
 	display: flex;
 	flex-wrap: wrap;
 	justify-content: center;
-	gap: 8px;
-	margin-top: 24px;
+	gap: var(--nfd-ai-chat-spacing-sm);
+	margin-top: var(--nfd-ai-chat-spacing-lg);
 	max-width: 400px;
 }

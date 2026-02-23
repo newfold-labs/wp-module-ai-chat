@@ -1,9 +1,12 @@
 /* -------------------------------------------------------------------------- */
+
 /*                         AI Chat CSS Variables                              */
+
 /* -------------------------------------------------------------------------- */
 
 :root {
-	/* Primary colors */
+
+	/* Default/Base colors - can be overridden by brand-specific variables */
 	--nfd-ai-chat-color-primary: #2271b1;
 	--nfd-ai-chat-color-primary-hover: #135e96;
 	--nfd-ai-chat-color-primary-active: #0e4b72;
@@ -22,6 +25,8 @@
 	--nfd-ai-chat-color-error: #d63638;
 	--nfd-ai-chat-color-error-hover: #b32d2e;
 	--nfd-ai-chat-color-error-active: #8a2424;
+	--nfd-ai-chat-color-error-alpha-10: rgba(214, 54, 56, 0.1);
+	--nfd-ai-chat-color-error-alpha-15: rgba(214, 54, 56, 0.15);
 
 	/* Success colors */
 	--nfd-ai-chat-color-success: #00a32a;
@@ -40,4 +45,59 @@
 	--nfd-ai-chat-font-size-md: 16px;
 	--nfd-ai-chat-font-size-sm: 12px;
 	--nfd-ai-chat-font-size-xs: 10px;
+
+	/* Spacing */
+	--nfd-ai-chat-spacing-xs: 4px;
+	--nfd-ai-chat-spacing-sm: 8px;
+	--nfd-ai-chat-spacing-md: 16px;
+	--nfd-ai-chat-spacing-lg: 24px;
+	--nfd-ai-chat-spacing-xl: 32px;
+
+	/* Border radius */
+	--nfd-ai-chat-radius-sm: 4px;
+	--nfd-ai-chat-radius-md: 8px;
+	--nfd-ai-chat-radius-lg: 12px;
+	--nfd-ai-chat-radius-xl: 16px;
+	--nfd-ai-chat-radius-full: 9999px;
+
+	/* Shadows */
+	--nfd-ai-chat-shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+	--nfd-ai-chat-shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+	--nfd-ai-chat-shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
 }
+
+/* -------------------------------------------------------------------------- */
+
+/*                         Brand-Specific Variables                          */
+
+/* -------------------------------------------------------------------------- */
+
+/* Bluehost Brand */
+.nfd-brand-bluehost,
+[data-brand="bluehost"] {
+
+	/* Primary Bluehost Blue - #0075FA */
+	--nfd-ai-chat-color-primary: #0075fa;
+	--nfd-ai-chat-color-primary-hover: #0066e0;
+	--nfd-ai-chat-color-primary-active: #0055c2;
+	--nfd-ai-chat-color-primary-light-8: rgba(0, 117, 250, 0.08);
+	--nfd-ai-chat-color-primary-light-12: rgba(0, 117, 250, 0.12);
+	--nfd-ai-chat-color-primary-light-16: rgba(0, 117, 250, 0.16);
+	--nfd-ai-chat-color-primary-light-20: rgba(0, 117, 250, 0.2);
+
+	/* Enhanced UI colors for professional look */
+	--nfd-ai-chat-color-background: #f8f9fa;
+	--nfd-ai-chat-color-border: #e5e7eb;
+	--nfd-ai-chat-color-text: #111827;
+	--nfd-ai-chat-color-text-secondary: #6b7280;
+}
+
+/* Add more brands here as needed */
+
+/* Example:
+.nfd-brand-hostgator,
+[data-brand="hostgator"] {
+	--nfd-ai-chat-color-primary: #FF6600;
+	...
+}
+*/

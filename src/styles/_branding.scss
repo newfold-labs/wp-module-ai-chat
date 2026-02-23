@@ -1,0 +1,151 @@
+/* -------------------------------------------------------------------------- */
+
+/*                         Brand-Specific Styling                            */
+
+/* -------------------------------------------------------------------------- */
+
+/* Base chat container with brand support */
+.nfd-ai-chat-container {
+
+	/* Brand class will be applied to this container */
+	height: 100%;
+	display: flex;
+	flex-direction: column;
+}
+
+/* Bluehost Brand Styling */
+.nfd-brand-bluehost,
+[data-brand="bluehost"] {
+
+	/* Enhanced message bubbles for professional look */
+	.nfd-ai-chat-message {
+
+		&--user {
+
+			.nfd-ai-chat-message__content {
+				background: var(--nfd-ai-chat-color-primary);
+				color: var(--nfd-ai-chat-color-white);
+				font-weight: 500;
+				box-shadow: var(--nfd-ai-chat-shadow-sm);
+			}
+		}
+
+		&--assistant {
+
+			.nfd-ai-chat-message__content {
+				color: var(--nfd-ai-chat-color-text);
+			}
+		}
+	}
+
+	/* Enhanced input styling */
+	.nfd-ai-chat-input {
+		background: var(--nfd-ai-chat-color-white);
+		border-top: 1px solid var(--nfd-ai-chat-color-border);
+		box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.04);
+
+		.nfd-ai-chat-input__textarea:focus {
+			outline: none;
+		}
+
+		.components-button.nfd-ai-chat-input__submit:hover:not(:disabled) {
+			background: var(--nfd-ai-chat-color-primary-hover);
+			transform: translateY(-1px);
+			box-shadow: var(--nfd-ai-chat-shadow-md);
+		}
+
+		.components-button.nfd-ai-chat-input__submit:active:not(:disabled) {
+			background: var(--nfd-ai-chat-color-primary-active);
+			transform: translateY(0);
+		}
+	}
+
+	/* Professional welcome screen */
+	.nfd-ai-chat-welcome {
+
+		.nfd-ai-chat-welcome__title {
+			color: var(--nfd-ai-chat-color-text);
+			font-weight: 600;
+		}
+
+		.nfd-ai-chat-welcome__subtitle {
+			color: var(--nfd-ai-chat-color-text-secondary);
+		}
+	}
+
+	/* Enhanced avatar with brand colors */
+	.nfd-ai-chat-avatar {
+		background: linear-gradient(135deg, var(--nfd-ai-chat-color-primary) 0%, var(--nfd-ai-chat-color-primary-hover) 100%);
+		box-shadow: var(--nfd-ai-chat-shadow-md);
+	}
+
+	/* Professional suggestion buttons */
+	.nfd-ai-chat-suggestion {
+
+		&:hover {
+			background: var(--nfd-ai-chat-color-primary-light-8);
+			border-color: var(--nfd-ai-chat-color-primary);
+			color: var(--nfd-ai-chat-color-primary);
+			transform: translateY(-1px);
+			box-shadow: var(--nfd-ai-chat-shadow-sm);
+		}
+	}
+
+	/* Enhanced typing indicator dots (spans inside __dots) */
+	.nfd-ai-chat-typing-indicator .nfd-ai-chat-typing-indicator__dots span {
+		background: var(--nfd-ai-chat-color-primary);
+	}
+
+	/* Professional scrollbar and message area */
+	.nfd-ai-chat-messages {
+		background: var(--nfd-ai-chat-color-white);
+
+		&::-webkit-scrollbar {
+			width: 8px;
+		}
+
+		&::-webkit-scrollbar-track {
+			background: var(--nfd-ai-chat-color-background);
+		}
+
+		&::-webkit-scrollbar-thumb {
+			background: var(--nfd-ai-chat-color-grey-light);
+			border-radius: var(--nfd-ai-chat-radius-full);
+
+			&:hover {
+				background: var(--nfd-ai-chat-color-grey-medium);
+			}
+		}
+	}
+
+	/* Enhanced blockquote styling */
+	.nfd-ai-chat-message__content {
+
+		blockquote {
+			border-left-color: var(--nfd-ai-chat-color-primary);
+			background: var(--nfd-ai-chat-color-primary-light-8);
+		}
+
+		a {
+			color: var(--nfd-ai-chat-color-primary);
+			font-weight: 500;
+
+			&:hover {
+				color: var(--nfd-ai-chat-color-primary-hover);
+				text-decoration: underline;
+			}
+		}
+
+		mark {
+			background-color: var(--nfd-ai-chat-color-primary-light-20);
+			color: var(--nfd-ai-chat-color-primary-active);
+		}
+	}
+
+	/* Professional error styling */
+	.nfd-ai-chat-error-alert {
+		background: rgba(214, 54, 56, 0.08);
+		border-color: var(--nfd-ai-chat-color-error);
+		border-radius: var(--nfd-ai-chat-radius-md);
+	}
+}

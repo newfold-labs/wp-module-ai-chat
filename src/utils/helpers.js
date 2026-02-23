@@ -1,4 +1,18 @@
 /**
+ * Unescape AI response text so display shows normal quotes instead of \"
+ * Handles JSON-style escaped quotes that can appear in model/tool output.
+ *
+ * @param {string} text - Raw message text that may contain \" or \'
+ * @return {string} Text with escaped quotes replaced for display
+ */
+export const unescapeAiResponse = (text) => {
+	if (!text || typeof text !== "string") {
+		return text;
+	}
+	return text.replace(/\\"/g, '"').replace(/\\'/g, "'");
+};
+
+/**
  * Simple hash function to create a unique identifier from a string
  * Uses a variation of the djb2 hash algorithm
  *
@@ -54,6 +68,7 @@ export const debounce = (func, wait) => {
 };
 
 export default {
+	unescapeAiResponse,
 	simpleHash,
 	generateSessionId,
 	debounce,
