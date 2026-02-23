@@ -11,7 +11,12 @@
 
 import { useState, useEffect, useRef, useCallback } from "@wordpress/element";
 import { __ } from "@wordpress/i18n";
-import { NFD_AGENTS_WEBSOCKET } from "../constants/nfdAgents/websocket";
+import {
+	NFD_AGENTS_WEBSOCKET,
+	WS_CLOSE_AUTH_FAILED,
+	WS_CLOSE_MISSING_TOKEN,
+} from "../constants/nfdAgents/websocket";
+import { getJwtExpirationMs } from "../utils/nfdAgents/jwtUtils";
 import {
 	getSiteId,
 	setSiteId,
@@ -111,6 +116,11 @@ const useNfdAgentsWebSocket = ({
 	const reconnectTimeoutRef = useRef(null);
 	const reconnectAttempts = useRef(0);
 	const configRef = useRef(null);
+	const jwtRefreshTimeoutRef = useRef(null);
+	const lastProactiveRefreshAt = useRef(null);
+	const lastAuthRefreshAt = useRef(null);
+	const connectRef = useRef(null);
+	const disconnectRef = useRef(null);
 	const previousAutoConnectRef = useRef(null);
 	const connectingRef = useRef(false);
 	const sessionIdRef = useRef(() => {
@@ -125,6 +135,7 @@ const useNfdAgentsWebSocket = ({
 	}
 	const hasUserMessageRef = useRef(false);
 	const isStoppedRef = useRef(false);
+	const isTypingRef = useRef(false);
 	const typingTimeoutRef = useRef(null);
 	const isInitialMount = useRef(true);
 	const messagesRef = useRef([]);
@@ -134,6 +145,14 @@ const useNfdAgentsWebSocket = ({
 	const MAX_RECONNECT_ATTEMPTS = NFD_AGENTS_WEBSOCKET.MAX_RECONNECT_ATTEMPTS;
 	const RECONNECT_DELAY = NFD_AGENTS_WEBSOCKET.RECONNECT_DELAY;
 	const TYPING_TIMEOUT = NFD_AGENTS_WEBSOCKET.TYPING_TIMEOUT;
+	const JWT_REFRESH_BUFFER_MS = NFD_AGENTS_WEBSOCKET.JWT_REFRESH_BUFFER_MS;
+	const JWT_REFRESH_MIN_DELAY_MS = NFD_AGENTS_WEBSOCKET.JWT_REFRESH_MIN_DELAY_MS;
+	const JWT_PROACTIVE_REFRESH_COOLDOWN_MS =
+		NFD_AGENTS_WEBSOCKET.JWT_PROACTIVE_REFRESH_COOLDOWN_MS;
+	const AUTH_REFRESH_COOLDOWN_MS = NFD_AGENTS_WEBSOCKET.AUTH_REFRESH_COOLDOWN_MS;
+	const JWT_EXPIRED_BUFFER_MS = NFD_AGENTS_WEBSOCKET.JWT_EXPIRED_BUFFER_MS;
+	const JWT_PROACTIVE_REFRESH_DEFER_MS =
+		NFD_AGENTS_WEBSOCKET.JWT_PROACTIVE_REFRESH_DEFER_MS;
 
 	// ---------------------------------------------------------------------------
 	// Callbacks passed to messageHandler (persist session/conversation ID to ref + localStorage)
@@ -195,9 +214,29 @@ const useNfdAgentsWebSocket = ({
 				configRef.current = await fetchAgentConfig({ configEndpoint, consumer });
 			}
 
-			const config = configRef.current;
+			let config = configRef.current;
 			if (!config) {
 				throw new Error(__("No configuration available", "wp-module-ai-chat"));
+			}
+
+			// Pre-connect: if JWT is already expired or within buffer, refetch config once
+			let refetchedForExpiry = false;
+			while (config?.jarvis_jwt) {
+				const expMs = getJwtExpirationMs(config.jarvis_jwt);
+				if (expMs == null) break;
+				if (expMs >= Date.now() + JWT_EXPIRED_BUFFER_MS) break;
+				if (refetchedForExpiry) {
+					throw new Error(
+						__("Token expired, please refresh the page.", "wp-module-ai-chat")
+					);
+				}
+				configRef.current = null;
+				configRef.current = await fetchAgentConfig({ configEndpoint, consumer });
+				config = configRef.current;
+				refetchedForExpiry = true;
+				if (!config) {
+					throw new Error(__("No configuration available", "wp-module-ai-chat"));
+				}
 			}
 
 			// Cache site ID and migrate old storage keys if needed
@@ -212,6 +251,45 @@ const useNfdAgentsWebSocket = ({
 			// Generate or reuse session ID
 			if (!sessionIdRef.current) {
 				sessionIdRef.current = generateSessionId();
+			}
+
+			// Schedule proactive JWT refresh only for jarvis_jwt (exclude huapi_token / debug path)
+			if (config.jarvis_jwt) {
+				if (jwtRefreshTimeoutRef.current) {
+					clearTimeout(jwtRefreshTimeoutRef.current);
+					jwtRefreshTimeoutRef.current = null;
+				}
+				const expMs = getJwtExpirationMs(config.jarvis_jwt);
+				if (expMs != null) {
+					let refreshAt = expMs - JWT_REFRESH_BUFFER_MS;
+					refreshAt = Math.max(refreshAt, Date.now() + JWT_REFRESH_MIN_DELAY_MS);
+					const now = Date.now();
+					const insideCooldown =
+						lastProactiveRefreshAt.current != null &&
+						refreshAt < lastProactiveRefreshAt.current + JWT_PROACTIVE_REFRESH_COOLDOWN_MS;
+					if (!insideCooldown) {
+						const delay = Math.max(0, refreshAt - now);
+						const runRefresh = () => {
+							if (isTypingRef.current) {
+								jwtRefreshTimeoutRef.current = setTimeout(
+									runRefresh,
+									JWT_PROACTIVE_REFRESH_DEFER_MS
+								);
+								return;
+							}
+							jwtRefreshTimeoutRef.current = null;
+							lastProactiveRefreshAt.current = Date.now();
+							configRef.current = null;
+							if (disconnectRef.current) {
+								disconnectRef.current();
+							}
+							if (connectRef.current) {
+								connectRef.current();
+							}
+						};
+						jwtRefreshTimeoutRef.current = setTimeout(runRefresh, delay);
+					}
+				}
 			}
 
 			// Build WebSocket URL from config (site_url comes from config endpoint)
@@ -276,6 +354,24 @@ const useNfdAgentsWebSocket = ({
 					wsRef.current = null;
 				}
 
+				// Auth failure (4000/4001) or client-side detected token expiry: clear config so next connect fetches fresh JWT (throttled by cooldown)
+				const isAuthClose = event.code === WS_CLOSE_AUTH_FAILED || event.code === WS_CLOSE_MISSING_TOKEN;
+				const jwt = configRef.current?.jarvis_jwt;
+				const expMs = jwt ? getJwtExpirationMs(jwt) : null;
+				const tokenExpired =
+					expMs != null && expMs < Date.now() + JWT_EXPIRED_BUFFER_MS;
+				if (isAuthClose || tokenExpired) {
+					const now = Date.now();
+					const outsideAuthCooldown =
+						lastAuthRefreshAt.current == null ||
+						now - lastAuthRefreshAt.current >= AUTH_REFRESH_COOLDOWN_MS;
+					if (outsideAuthCooldown) {
+						configRef.current = null;
+						reconnectAttempts.current = 0;
+						lastAuthRefreshAt.current = now;
+					}
+				}
+
 				// Exponential backoff: reconnect only if not normal close and under max attempts
 				if (event.code !== 1000 && reconnectAttempts.current < MAX_RECONNECT_ATTEMPTS) {
 					reconnectAttempts.current++;
@@ -321,6 +417,12 @@ const useNfdAgentsWebSocket = ({
 		MAX_RECONNECT_ATTEMPTS,
 		RECONNECT_DELAY,
 		TYPING_TIMEOUT,
+		JWT_REFRESH_BUFFER_MS,
+		JWT_REFRESH_MIN_DELAY_MS,
+		JWT_PROACTIVE_REFRESH_COOLDOWN_MS,
+		AUTH_REFRESH_COOLDOWN_MS,
+		JWT_EXPIRED_BUFFER_MS,
+		JWT_PROACTIVE_REFRESH_DEFER_MS,
 	]);
 
 	// ---------------------------------------------------------------------------
@@ -334,6 +436,26 @@ const useNfdAgentsWebSocket = ({
 	useEffect(() => {
 		connectionStateRef.current = connectionState;
 	}, [connectionState]);
+
+	useEffect(() => {
+		isTypingRef.current = isTyping;
+	}, [isTyping]);
+
+	// ---------------------------------------------------------------------------
+	// Unmount cleanup — Clear timers so no callbacks run after unmount.
+	// ---------------------------------------------------------------------------
+	useEffect(() => {
+		return () => {
+			if (reconnectTimeoutRef.current) {
+				clearTimeout(reconnectTimeoutRef.current);
+				reconnectTimeoutRef.current = null;
+			}
+			if (jwtRefreshTimeoutRef.current) {
+				clearTimeout(jwtRefreshTimeoutRef.current);
+				jwtRefreshTimeoutRef.current = null;
+			}
+		};
+	}, []);
 
 	// ---------------------------------------------------------------------------
 	// On transition to "failed", append assistant fallback message so user sees error state
@@ -437,9 +559,8 @@ const useNfdAgentsWebSocket = ({
 					};
 					setMessages((prev) => [...prev, userMessage]);
 				}
-				if (connectionStateRef.current === "disconnected") {
-					connect();
-				}
+				// Trigger connect when not connected (disconnected or reconnecting) so message can be sent once open
+				connect();
 				return;
 			}
 
@@ -526,6 +647,11 @@ const useNfdAgentsWebSocket = ({
 	const disconnect = useCallback(() => {
 		if (reconnectTimeoutRef.current) {
 			clearTimeout(reconnectTimeoutRef.current);
+			reconnectTimeoutRef.current = null;
+		}
+		if (jwtRefreshTimeoutRef.current) {
+			clearTimeout(jwtRefreshTimeoutRef.current);
+			jwtRefreshTimeoutRef.current = null;
 		}
 		if (typingTimeoutRef.current) {
 			clearTimeout(typingTimeoutRef.current);
@@ -539,6 +665,14 @@ const useNfdAgentsWebSocket = ({
 		setIsConnecting(false);
 		setConnectionState("disconnected");
 	}, []);
+
+	// Ref sync — Keep connect/disconnect refs in sync so callbacks see latest without dependency arrays.
+	useEffect(() => {
+		connectRef.current = connect;
+	}, [connect]);
+	useEffect(() => {
+		disconnectRef.current = disconnect;
+	}, [disconnect]);
 
 	// ---------------------------------------------------------------------------
 	// setSessionId(sid) / getSessionId() — Update or read current session ID (used by messageHandler and history).
@@ -704,6 +838,10 @@ const useNfdAgentsWebSocket = ({
 			if (reconnectTimeoutRef.current) {
 				clearTimeout(reconnectTimeoutRef.current);
 				reconnectTimeoutRef.current = null;
+			}
+			if (jwtRefreshTimeoutRef.current) {
+				clearTimeout(jwtRefreshTimeoutRef.current);
+				jwtRefreshTimeoutRef.current = null;
 			}
 
 			reconnectAttempts.current = 0;
