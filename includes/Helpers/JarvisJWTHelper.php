@@ -42,7 +42,7 @@ class JarvisJWTHelper {
 		if ( is_wp_error( $customer_data ) ) {
 			return new WP_Error(
 				'jarvis_jwt_fetch_failed',
-				__( 'Failed to fetch authentication token', 'nfd-ai-chat' ),
+				__( 'Failed to fetch authentication token', 'wp-module-ai-chat' ),
 				array( 'status' => 500 )
 			);
 		}
@@ -54,7 +54,7 @@ class JarvisJWTHelper {
 		if ( '' === $token ) {
 			return new WP_Error(
 				'jarvis_jwt_fetch_failed',
-				__( 'Failed to fetch authentication token', 'nfd-ai-chat' ),
+				__( 'Failed to fetch authentication token', 'wp-module-ai-chat' ),
 				array( 'status' => 500 )
 			);
 		}

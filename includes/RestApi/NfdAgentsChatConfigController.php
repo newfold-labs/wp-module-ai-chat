@@ -122,7 +122,7 @@ class NfdAgentsChatConfigController extends WP_REST_Controller {
 		if ( ! $capability ) {
 			return new WP_Error(
 				'invalid_consumer',
-				__( 'Invalid consumer specified', 'nfd-ai-chat' ),
+				__( 'Invalid consumer specified', 'wp-module-ai-chat' ),
 				array( 'status' => 400 )
 			);
 		}
@@ -142,7 +142,7 @@ class NfdAgentsChatConfigController extends WP_REST_Controller {
 		if ( '' === $gateway_url ) {
 			return new WP_Error(
 				'gateway_url_not_configured',
-				__( 'NFD AI Chat Jarvis gateway URL is not configured. Set NFD_AI_CHAT_JARVIS_GATEWAY_URL in wp-config.php.', 'nfd-ai-chat' ),
+				__( 'NFD AI Chat Jarvis gateway URL is not configured. Set NFD_AI_CHAT_JARVIS_GATEWAY_URL in wp-config.php.', 'wp-module-ai-chat' ),
 				array( 'status' => 500 )
 			);
 		}
