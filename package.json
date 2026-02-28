@@ -35,7 +35,6 @@
 		"@modelcontextprotocol/sdk": "^1.0.0",
 		"classnames": "^2.5.1",
 		"dompurify": "^3.3.0",
-		"lucide-react": "^0.468.0",
-		"openai": "^4.68.0"
+		"lucide-react": "^0.468.0"
 	}
 }
