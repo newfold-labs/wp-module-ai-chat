@@ -66,8 +66,9 @@ const finalizeTyping = ({ setIsTyping, setStatus, setCurrentResponse, typingTime
  * @param {Function} setMessages State setter
  * @param {string}   content     Message content
  * @param {string}   [idSuffix]  Optional suffix for message ID
+ * @param {boolean}  [animate]   Whether to animate typing (default true)
  */
-const addAssistantMsg = (setMessages, content, idSuffix = "") => {
+const addAssistantMsg = (setMessages, content, idSuffix = "", animate = true) => {
 	setMessages((prev) => [
 		...prev,
 		{
@@ -76,7 +77,7 @@ const addAssistantMsg = (setMessages, content, idSuffix = "") => {
 			type: "assistant",
 			content,
 			timestamp: new Date(),
-			animateTyping: true,
+			animateTyping: animate,
 		},
 	]);
 };
@@ -113,7 +114,14 @@ export function createMessageHandler(deps) {
 		setError,
 		saveSessionId,
 		saveConversationId,
+		onToolCallRef,
 	} = deps;
+
+	// Closure variables that track streaming text synchronously.
+	// React 18 batching means we cannot reliably read currentResponse
+	// from inside another setState callback, so we mirror it here.
+	let lastStreamedContent = "";
+	let flushedReasoningText = "";
 
 	return function handleMessage(data) {
 		// If user has stopped generation, ignore all messages except session_established
@@ -151,7 +159,7 @@ export function createMessageHandler(deps) {
 			if (isStoppedRef.current) {
 				return;
 			}
-			const content = data.content || data.chunk || data.text || "";
+			const content = data.content || data.chunk || data.text || data.message || "";
 			if (content) {
 				setCurrentResponse((prev) => {
 					const newContent = prev + content;
@@ -160,8 +168,11 @@ export function createMessageHandler(deps) {
 						newContent.length < 100 &&
 						isInitialGreeting(newContent)
 					) {
+						lastStreamedContent = "";
 						return "";
 					}
+					// Mirror into closure so tool_call can read it synchronously
+					lastStreamedContent = newContent;
 					setIsTyping(true);
 					if (typingTimeoutRef.current) {
 						clearTimeout(typingTimeoutRef.current);
@@ -219,6 +230,61 @@ export function createMessageHandler(deps) {
 		// --- tool_call ---
 		if (data.type === "tool_call") {
 			setStatus(getStatusForEventType("tool_call"));
+
+			// Flush any accumulated reasoning text as its own message.
+			// Read from the closure variable (not nested setState) so the
+			// message is created reliably regardless of React 18 batching.
+			const reasoningText = lastStreamedContent.trim();
+			lastStreamedContent = "";
+			flushedReasoningText = reasoningText;
+			setCurrentResponse("");
+			if (reasoningText) {
+				addAssistantMsg(setMessages, reasoningText, "-reasoning", false);
+			}
+
+			// Keep typing indicator visible between reasoning flush and tool
+			// execution start.  Without this, the dots disappear briefly and
+			// the UI feels "done" even though the agent is still working.
+			setIsTyping(true);
+			clearTypingTimeout(typingTimeoutRef);
+
+			// Dispatch tool calls to the consumer (e.g. editor chat) for
+			// client-side execution (block editing, style changes, etc.).
+			const toolCalls = data.function_content;
+
+			if (onToolCallRef?.current && Array.isArray(toolCalls) && toolCalls.length > 0) {
+				const normalized = toolCalls.map((tc) => {
+					try {
+						const id = tc.id || `tool-${Date.now()}`;
+						const rawName = tc.name || tc.function_name || "";
+						const rawArgs =
+							typeof tc.arguments === "string" ? JSON.parse(tc.arguments) : tc.arguments || {};
+
+						// The gateway wraps WordPress MCP calls in a meta-tool
+						// (e.g. "WordPressPlugin-call_wordpress_tool"). Unwrap to
+						// expose the actual tool name and arguments to consumers.
+						if (rawName.endsWith("-call_wordpress_tool") && rawArgs.tool_name) {
+							let innerArgs = rawArgs.tool_arguments || {};
+							if (typeof innerArgs === "string") {
+								try {
+									innerArgs = JSON.parse(innerArgs);
+								} catch (_) {
+									/* keep as-is */
+								}
+							}
+							// Normalize: MCP uses slashes (blu/edit-block), client uses dashes (blu-edit-block)
+							const toolName = rawArgs.tool_name.replace(/\//g, "-");
+							return { id, name: toolName, arguments: innerArgs };
+						}
+
+						return { id, name: rawName, arguments: rawArgs };
+					} catch (err) {
+						console.error("[AI Chat] Failed to normalize tool call:", tc, err); // eslint-disable-line no-console
+						return { id: tc.id || `tool-${Date.now()}`, name: tc.name || "unknown", arguments: {} };
+					}
+				});
+				onToolCallRef.current(normalized);
+			}
 			return;
 		}
 
@@ -235,44 +301,42 @@ export function createMessageHandler(deps) {
 
 		// --- message / complete ---
 		if (data.type === "message" || data.type === "complete") {
+			// Check if there's buffered streaming content (tracked synchronously)
+			const buffered = lastStreamedContent.trim();
+			lastStreamedContent = "";
+			setCurrentResponse("");
+
 			let hasContent = false;
-			setCurrentResponse((prev) => {
-				if (prev) {
-					const trimmedContent = prev.trim();
-					if (
-						trimmedContent === "No content provided" ||
-						trimmedContent === "sales_requested" ||
-						trimmedContent.toLowerCase() === "sales_requested"
-					) {
-						return "";
-					}
-					if (!hasUserMessageRef.current && prev.length < 150 && isInitialGreeting(prev)) {
-						return "";
-					}
-					setMessages((prevMessages) => [
-						...prevMessages,
-						{
-							id: `msg-${Date.now()}`,
-							role: "assistant",
-							type: "assistant",
-							content: prev,
-							timestamp: new Date(),
-							animateTyping: true,
-						},
-					]);
+
+			if (buffered) {
+				const skip =
+					buffered === "No content provided" ||
+					buffered === "sales_requested" ||
+					buffered.toLowerCase() === "sales_requested" ||
+					(!hasUserMessageRef.current && buffered.length < 150 && isInitialGreeting(buffered));
+				if (!skip) {
+					addAssistantMsg(setMessages, buffered);
 					hasContent = true;
 				}
-				return "";
-			});
+			}
 
 			if (!hasContent) {
 				const payloadMessage = data.message || data.response_content?.message;
-				const filtered = filterMessage(payloadMessage, hasUserMessageRef.current);
+				let filtered = filterMessage(payloadMessage, hasUserMessageRef.current);
+
+				// Strip the reasoning prefix that was already shown in the
+				// -reasoning message so the result doesn't repeat it.
+				if (filtered && flushedReasoningText && filtered.startsWith(flushedReasoningText)) {
+					filtered = filtered.substring(flushedReasoningText.length).trim() || null;
+				}
+
 				if (filtered) {
 					addAssistantMsg(setMessages, filtered);
 					hasContent = true;
 				}
 			}
+
+			flushedReasoningText = "";
 
 			if (hasContent) {
 				finalizeTyping(deps);

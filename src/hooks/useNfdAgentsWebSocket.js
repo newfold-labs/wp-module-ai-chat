@@ -55,6 +55,7 @@ const useNfdAgentsWebSocket = ({
 	consumerType = "editor_chat",
 	autoLoadHistory = true,
 	getConnectionFailedFallbackMessage,
+	onToolCall,
 } = {}) => {
 	// ---------------------------------------------------------------------------
 	// Storage keys (site-scoped; single source of truth from storageKeys.js)
@@ -128,6 +129,8 @@ const useNfdAgentsWebSocket = ({
 	const typingTimeoutRef = useRef(null);
 	const isInitialMount = useRef(true);
 	const messagesRef = useRef([]);
+	const onToolCallRef = useRef(onToolCall);
+	onToolCallRef.current = onToolCall;
 	const connectionStateRef = useRef(connectionState);
 	const prevConnectionStateRef = useRef(connectionState);
 
@@ -248,6 +251,7 @@ const useNfdAgentsWebSocket = ({
 				setError,
 				saveSessionId,
 				saveConversationId,
+				onToolCallRef,
 			});
 
 			ws.onmessage = (event) => {
@@ -518,6 +522,30 @@ const useNfdAgentsWebSocket = ({
 			wsRef.current.send(JSON.stringify(payload));
 		},
 		[conversationId, TYPING_TIMEOUT]
+	);
+
+	// ---------------------------------------------------------------------------
+	// sendToolResult(toolCallId, toolName, result) — Sends a tool_result message
+	// back to the backend so call_wordpress_tool() can return the real data to the AI.
+	// ---------------------------------------------------------------------------
+	const sendToolResult = useCallback(
+		(toolCallId, toolName, result) => {
+			if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
+				// eslint-disable-next-line no-console
+				console.warn("[AI Chat] Cannot send tool result - not connected");
+				return;
+			}
+
+			wsRef.current.send(
+				JSON.stringify({
+					type: "tool_result",
+					tool_call_id: toolCallId,
+					tool_name: toolName,
+					result,
+				})
+			);
+		},
+		[]
 	);
 
 	// ---------------------------------------------------------------------------
@@ -799,6 +827,7 @@ const useNfdAgentsWebSocket = ({
 		getSessionId,
 		sendMessage,
 		sendSystemMessage,
+		sendToolResult,
 		isConnected,
 		isConnecting,
 		error,
