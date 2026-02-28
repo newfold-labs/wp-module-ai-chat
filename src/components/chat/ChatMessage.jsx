@@ -40,7 +40,7 @@ const ChatMessage = ({
 	toolResults = [],
 }) => {
 	// Treat approval_request as assistant so the thread still displays
-	const displayType = type === "approval_request" ? "assistant" : type;
+	const displayType = type === "approval_request" || type === "tool_execution" ? "assistant" : type;
 	const isUser = displayType === "user";
 
 	const fullLength = (message || "").length;
