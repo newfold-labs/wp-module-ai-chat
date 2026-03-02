@@ -19,13 +19,18 @@ jobs:
           node-version-file: '.nvmrc'
           registry-url: 'https://registry.npmjs.org'
           scope: '@newfold'
+          # Use NODE_AUTH_TOKEN secret when set; otherwise OIDC (Trusted Publishers) is used
+          token: ${{ secrets.NODE_AUTH_TOKEN }}
 
       - name: Install Dependencies
         run: npm ci
 
-      # Trusted publishing (OIDC): remove token from .npmrc so npm uses OIDC
-      - name: Configure npm for OIDC publish
-        run: npm config delete //registry.npmjs.org/:_authToken || true
+      # If no NODE_AUTH_TOKEN secret: remove any token so npm uses OIDC (Trusted Publishers)
+      - name: Configure npm for OIDC when no token
+        run: |
+          if [ -z "${{ secrets.NODE_AUTH_TOKEN }}" ]; then
+            npm config delete //registry.npmjs.org/:_authToken || true
+          fi
 
       - name: Publish
         run: npm publish
