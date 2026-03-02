@@ -19,6 +19,13 @@ class JarvisJWTHelper {
 	const TRANSIENT_KEY_JWT = 'nfd_ai_chat_jarvis_jwt';
 
 	/**
+	 * Minimum seconds until expiry to return a cached token; below this we refetch (safety buffer).
+	 *
+	 * @var int
+	 */
+	const MIN_SECONDS_UNTIL_EXPIRY = 60;
+
+	/**
 	 * Resolve Jarvis JWT: debug constant, transient cache, or Hiive API (jarvis_jwt only).
 	 *
 	 * @return string|WP_Error Token string or error.
@@ -30,7 +37,7 @@ class JarvisJWTHelper {
 
 		$token = get_transient( self::TRANSIENT_KEY_JWT );
 		if ( false !== $token && '' !== $token ) {
-			if ( $this->get_seconds_until_expiry( $token ) > 0 ) {
+			if ( $this->get_seconds_until_expiry( $token ) > self::MIN_SECONDS_UNTIL_EXPIRY ) {
 				return $token;
 			}
 			delete_transient( self::TRANSIENT_KEY_JWT );

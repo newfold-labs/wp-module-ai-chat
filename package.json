@@ -1,9 +1,19 @@
 {
-	"name": "@newfold-labs/wp-module-ai-chat",
+	"name": "@newfold/wp-module-ai-chat",
 	"version": "1.0.0",
 	"description": "Reusable AI Chat core for WordPress modules",
 	"license": "GPL-2.0-or-later",
+	"publishConfig": {
+		"access": "public"
+	},
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/newfold-labs/wp-module-ai-chat.git"
+	},
 	"main": "src/index.js",
+	"files": [
+		"src"
+	],
 	"exports": {
 		".": "./src/index.js",
 		"./services/*": "./src/services/*.js",
