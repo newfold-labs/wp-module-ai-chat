@@ -1,6 +1,6 @@
 {
 	"name": "@newfold/wp-module-ai-chat",
-	"version": "1.0.0",
+	"version": "1.0.1",
 	"description": "Reusable AI Chat core for WordPress modules",
 	"license": "GPL-2.0-or-later",
 	"publishConfig": {
