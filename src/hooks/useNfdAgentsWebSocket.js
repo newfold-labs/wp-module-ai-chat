@@ -532,18 +532,25 @@ const useNfdAgentsWebSocket = ({
 		(toolCallId, toolName, result) => {
 			if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
 				// eslint-disable-next-line no-console
-				console.warn("[AI Chat] Cannot send tool result - not connected");
-				return;
+				console.warn("[AI Chat] Cannot send tool result - WebSocket not open");
+				return false;
 			}
 
-			wsRef.current.send(
-				JSON.stringify({
-					type: "tool_result",
-					tool_call_id: toolCallId,
-					tool_name: toolName,
-					result,
-				})
-			);
+			try {
+				wsRef.current.send(
+					JSON.stringify({
+						type: "tool_result",
+						tool_call_id: toolCallId,
+						tool_name: toolName,
+						result,
+					})
+				);
+				return true;
+			} catch (err) {
+				// eslint-disable-next-line no-console
+				console.error("[AI Chat] Failed to send tool result:", err);
+				return false;
+			}
 		},
 		[]
 	);
