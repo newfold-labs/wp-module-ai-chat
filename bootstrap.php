@@ -12,7 +12,7 @@ if ( \function_exists( 'add_action' ) ) {
 
 			// Set Global Constants
 			if ( ! \defined( 'NFD_AI_CHAT_VERSION' ) ) {
-				\define( 'NFD_AI_CHAT_VERSION', '1.0.1' );
+				\define( 'NFD_AI_CHAT_VERSION', '1.0.2' );
 			}
 			if ( ! \defined( 'NFD_AI_CHAT_DIR' ) ) {
 				\define( 'NFD_AI_CHAT_DIR', __DIR__ );

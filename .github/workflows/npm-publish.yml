@@ -23,6 +23,7 @@ jobs:
       - name: Install Dependencies
         run: npm ci
 
+      # prepublishOnly in package.json runs npm run build before packing
       # Trusted publishing (OIDC): remove token from .npmrc so npm uses OIDC
       - name: Configure npm for OIDC publish
         run: npm config delete //registry.npmjs.org/:_authToken || true
