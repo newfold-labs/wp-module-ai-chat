@@ -537,11 +537,16 @@ const useNfdAgentsWebSocket = ({
 			}
 
 			try {
+				const resultStr =
+					typeof result === "string"
+						? result
+						: JSON.stringify(result);
 				wsRef.current.send(
 					JSON.stringify({
 						type: "tool_result",
 						tool_call_id: toolCallId,
 						tool_name: toolName,
+						message: resultStr,
 						result,
 					})
 				);

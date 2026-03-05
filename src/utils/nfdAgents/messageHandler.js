@@ -338,9 +338,7 @@ export function createMessageHandler(deps) {
 
 			flushedReasoningText = "";
 
-			if (hasContent) {
-				finalizeTyping(deps);
-			}
+			finalizeTyping(deps);
 			return;
 		}
 
