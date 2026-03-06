@@ -1,0 +1,124 @@
+/* Tool Execution */
+@keyframes nfd-ai-chat-spin {
+
+	from {
+		transform: rotate(0deg);
+	}
+
+	to {
+		transform: rotate(360deg);
+	}
+}
+
+.nfd-ai-chat-tool-execution {
+	width: 100%;
+	background: var(--nfd-ai-chat-color-white);
+	border: 1px solid var(--nfd-ai-chat-color-border);
+	border-radius: var(--nfd-ai-chat-radius-md);
+	overflow: hidden;
+
+	// Override the parent message bubble padding for a balanced look
+	.nfd-ai-chat-message--assistant & {
+		margin: 4px 0;
+	}
+}
+
+.nfd-ai-chat-tool-execution__header {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	padding: 8px 12px;
+	background: none;
+	border: none;
+	cursor: pointer;
+	font-size: var(--nfd-ai-chat-font-size-sm);
+	font-weight: 500;
+	color: var(--nfd-ai-chat-color-text-secondary);
+	width: 100%;
+	text-align: left;
+	transition: color 0.15s ease;
+
+	&:hover {
+		color: var(--nfd-ai-chat-color-text);
+	}
+}
+
+.nfd-ai-chat-tool-execution__chevron {
+	flex-shrink: 0;
+	transition: transform 0.2s ease;
+}
+
+.nfd-ai-chat-tool-execution__header-count {
+	color: var(--nfd-ai-chat-color-grey-medium);
+	font-weight: 400;
+	margin-left: 2px;
+}
+
+.nfd-ai-chat-tool-execution__list {
+	display: flex;
+	flex-direction: column;
+	padding: 4px 12px 4px 12px;
+	gap: 2px;
+}
+
+.nfd-ai-chat-tool-execution__item {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	padding: 4px 0;
+}
+
+.nfd-ai-chat-tool-execution__item-header {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+}
+
+.nfd-ai-chat-tool-execution__icon {
+	flex-shrink: 0;
+
+	&--active {
+		color: var(--nfd-ai-chat-color-primary);
+		animation: nfd-ai-chat-spin 1s linear infinite;
+
+		.nfd-ai-chat-tool-execution__item-title {
+			font-weight: 500;
+		}
+	}
+
+	&--success {
+		color: var(--nfd-ai-chat-color-success);
+	}
+
+	&--error {
+		color: var(--nfd-ai-chat-color-error);
+	}
+
+	&--pending {
+		color: var(--nfd-ai-chat-color-grey-medium);
+	}
+}
+
+.nfd-ai-chat-tool-execution__item-title {
+	font-size: var(--nfd-ai-chat-font-size-sm);
+	color: var(--nfd-ai-chat-color-text-secondary);
+}
+
+.nfd-ai-chat-tool-execution__item-params {
+	font-size: var(--nfd-ai-chat-font-size-sm);
+	color: var(--nfd-ai-chat-color-grey-medium);
+	margin-left: 4px;
+}
+
+.nfd-ai-chat-tool-execution__item-progress {
+	font-size: var(--nfd-ai-chat-font-size-sm);
+	color: var(--nfd-ai-chat-color-text-secondary);
+	padding-left: 18px;
+}
+
+.nfd-ai-chat-tool-execution__item-summary {
+	font-size: var(--nfd-ai-chat-font-size-sm);
+	color: var(--nfd-ai-chat-color-grey-medium);
+	padding-left: 18px;
+	margin-top: 2px;
+}

@@ -23,8 +23,9 @@ class ConsumerCapabilitiesHelper {
 		$this->consumer_capabilities = ! empty( $consumer_capabilities )
 			? $consumer_capabilities
 			: array(
-				'help_center' => 'canAccessAIHelpCenter',
-				'editor_chat' => 'canAccessAIEditorChat',
+				'help_center'            => 'canAccessAIHelpCenter',
+				'editor_chat'            => 'canAccessAIEditorChat',
+				'wordpress_editor_chat'  => 'canAccessAIEditorChat',
 			);
 	}
 

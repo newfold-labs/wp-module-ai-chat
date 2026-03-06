@@ -10,15 +10,8 @@ import "./styles/app.scss";
 // Services
 export { WordPressMCPClient, createMCPClient, mcpClient, MCPError } from "./services/mcpClient";
 
-export {
-	CloudflareOpenAIClient,
-	createOpenAIClient,
-	openaiClient,
-	OpenAIError,
-} from "./services/openaiClient";
-
 // Hooks
-export { useAIChat, CHAT_STATUS } from "./hooks/useAIChat";
+export { CHAT_STATUS } from "./hooks/useAIChat";
 export { default as useNfdAgentsWebSocket } from "./hooks/useNfdAgentsWebSocket";
 
 // Utils
@@ -34,6 +27,7 @@ export {
 	buildWebSocketUrl,
 } from "./utils/nfdAgents/url";
 export { isInitialGreeting } from "./utils/nfdAgents/greeting";
+export { hasMeaningfulUserMessage } from "./utils/nfdAgents/storage";
 
 // Constants
 export { NFD_AGENTS_WEBSOCKET } from "./constants/nfdAgents/websocket";
