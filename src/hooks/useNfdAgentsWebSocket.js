@@ -118,6 +118,7 @@ const useNfdAgentsWebSocket = ({
 	const configRef = useRef(null);
 	const jwtRefreshTimeoutRef = useRef(null);
 	const lastProactiveRefreshAt = useRef(null);
+	const justDidProactiveRefreshRef = useRef(false);
 	const lastAuthRefreshAt = useRef(null);
 	const connectRef = useRef(null);
 	const disconnectRef = useRef(null);
@@ -267,7 +268,12 @@ const useNfdAgentsWebSocket = ({
 					const insideCooldown =
 						lastProactiveRefreshAt.current != null &&
 						refreshAt < lastProactiveRefreshAt.current + JWT_PROACTIVE_REFRESH_COOLDOWN_MS;
-					if (!insideCooldown) {
+					// After a proactive refresh we must reschedule for the new token; cooldown would block that.
+					const skipCooldownAfterRefresh = justDidProactiveRefreshRef.current;
+					if (skipCooldownAfterRefresh) {
+						justDidProactiveRefreshRef.current = false;
+					}
+					if (!insideCooldown || skipCooldownAfterRefresh) {
 						const delay = Math.max(0, refreshAt - now);
 						const runRefresh = () => {
 							if (isTypingRef.current) {
@@ -279,6 +285,7 @@ const useNfdAgentsWebSocket = ({
 							}
 							jwtRefreshTimeoutRef.current = null;
 							lastProactiveRefreshAt.current = Date.now();
+							justDidProactiveRefreshRef.current = true;
 							configRef.current = null;
 							if (disconnectRef.current) {
 								disconnectRef.current();
