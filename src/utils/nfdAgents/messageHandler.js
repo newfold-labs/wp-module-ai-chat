@@ -283,10 +283,18 @@ export function createMessageHandler(deps) {
 						return { id, name: rawName, arguments: rawArgs };
 					} catch (err) {
 						console.error("[AI Chat] Failed to normalize tool call:", tc, err); // eslint-disable-line no-console
-						return { id: tc.id || `tool-${Date.now()}-${idx}`, name: tc.name || "unknown", arguments: {} };
+						return {
+							id: tc.id || `tool-${Date.now()}-${idx}`,
+							name: tc.name || "unknown",
+							arguments: {},
+						};
 					}
 				});
-				onToolCallRef.current(normalized);
+				try {
+					onToolCallRef.current(normalized);
+				} catch (err) {
+					console.error("[AI Chat] Tool call handler threw an error:", err); // eslint-disable-line no-console
+				}
 			}
 			return;
 		}
