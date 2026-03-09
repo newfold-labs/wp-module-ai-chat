@@ -77,7 +77,11 @@ const ChatMessages = ({
 	// Hide the simple "Thinking..." dots when streaming content is already visible.
 	// The streaming text IS the "thinking" — dots are redundant alongside it.
 	const lastMessage = messages[messages.length - 1];
-	const hasStreamingContent = lastMessage?.isStreaming;
+	const hasStreamingContent =
+		isLoading &&
+		!!lastMessage &&
+		(lastMessage.type === "assistant" || lastMessage.role === "assistant") &&
+		lastMessage.animateTyping === true;
 
 	const messagesClassName = classnames("nfd-ai-chat-messages", {
 		"nfd-ai-chat-messages--minimal": messageBubbleStyle === "minimal",
