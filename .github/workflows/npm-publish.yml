@@ -1,0 +1,32 @@
+name: Publish Package to npmjs
+on:
+  release:
+    types:
+      - created
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      # Node 24+ required: trusted publishing (OIDC) needs npm 11.5.1+; Node 22 ships npm 10
+      - uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6.2.0
+        with:
+          node-version-file: '.nvmrc'
+          registry-url: 'https://registry.npmjs.org'
+          scope: '@newfold'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      # prepublishOnly in package.json runs npm run build before packing
+      # Trusted publishing (OIDC): remove token from .npmrc so npm uses OIDC
+      - name: Configure npm for OIDC publish
+        run: npm config delete //registry.npmjs.org/:_authToken || true
+
+      - name: Publish
+        run: npm publish

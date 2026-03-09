@@ -1,16 +1,28 @@
 {
-	"name": "@newfold-labs/wp-module-ai-chat",
-	"version": "1.0.0",
+	"name": "@newfold/wp-module-ai-chat",
+	"version": "1.0.3",
 	"description": "Reusable AI Chat core for WordPress modules",
 	"license": "GPL-2.0-or-later",
-	"main": "src/index.js",
+	"publishConfig": {
+		"access": "public"
+	},
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/newfold-labs/wp-module-ai-chat.git"
+	},
+	"main": "build/index.js",
+	"style": "build/index.css",
+	"files": [
+		"build"
+	],
 	"exports": {
-		".": "./src/index.js",
-		"./services/*": "./src/services/*.js",
-		"./components/*": "./src/components/*.jsx",
-		"./hooks/*": "./src/hooks/*.js",
-		"./utils/*": "./src/utils/*.js",
-		"./styles/*": "./src/styles/*.scss"
+		".": "./build/index.js",
+		"./style.css": "./build/index.css"
+	},
+	"scripts": {
+		"build": "wp-scripts build ./src/index.js --config ./scripts/webpack.config.js",
+		"lint": "wp-scripts lint-js ./src",
+		"prepublishOnly": "npm run build"
 	},
 	"peerDependencies": {
 		"@wordpress/element": "^6.0.0",
