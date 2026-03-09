@@ -256,9 +256,9 @@ export function createMessageHandler(deps) {
 			const toolCalls = data.function_content;
 
 			if (onToolCallRef?.current && Array.isArray(toolCalls) && toolCalls.length > 0) {
-				const normalized = toolCalls.map((tc) => {
+				const normalized = toolCalls.map((tc, idx) => {
 					try {
-						const id = tc.id || `tool-${Date.now()}`;
+						const id = tc.id || `tool-${Date.now()}-${idx}`;
 						const rawName = tc.name || tc.function_name || "";
 						const rawArgs =
 							typeof tc.arguments === "string" ? JSON.parse(tc.arguments) : tc.arguments || {};
@@ -283,7 +283,7 @@ export function createMessageHandler(deps) {
 						return { id, name: rawName, arguments: rawArgs };
 					} catch (err) {
 						console.error("[AI Chat] Failed to normalize tool call:", tc, err); // eslint-disable-line no-console
-						return { id: tc.id || `tool-${Date.now()}`, name: tc.name || "unknown", arguments: {} };
+						return { id: tc.id || `tool-${Date.now()}-${idx}`, name: tc.name || "unknown", arguments: {} };
 					}
 				});
 				onToolCallRef.current(normalized);
