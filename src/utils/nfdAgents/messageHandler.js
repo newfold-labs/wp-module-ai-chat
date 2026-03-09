@@ -147,6 +147,8 @@ export function createMessageHandler(deps) {
 
 		// --- typing_stop ---
 		if (data.type === "typing_stop") {
+			lastStreamedContent = "";
+			flushedReasoningText = "";
 			setIsTyping(false);
 			setStatus(null);
 			setCurrentResponse("");
@@ -214,12 +216,13 @@ export function createMessageHandler(deps) {
 
 			if (filtered) {
 				// Finalize any current streaming response first
-				setCurrentResponse((prev) => {
-					if (prev) {
-						addAssistantMsg(setMessages, prev, "-streaming");
-					}
-					return "";
-				});
+				const bufferedContent = lastStreamedContent.trim();
+				lastStreamedContent = "";
+				flushedReasoningText = "";
+				setCurrentResponse("");
+				if (bufferedContent) {
+					addAssistantMsg(setMessages, bufferedContent, "-streaming");
+				}
 
 				addAssistantMsg(setMessages, filtered);
 				finalizeTyping(deps);
@@ -350,6 +353,8 @@ export function createMessageHandler(deps) {
 
 		// --- handoff_request ---
 		if (data.type === "handoff_request") {
+			lastStreamedContent = "";
+			flushedReasoningText = "";
 			setStatus(getStatusForEventType("handoff_request"));
 			const messageContent = data.message || data.response_content?.message;
 			const filtered = filterMessage(messageContent, hasUserMessageRef.current);
@@ -366,6 +371,8 @@ export function createMessageHandler(deps) {
 
 		// --- error ---
 		if (data.type === "error") {
+			lastStreamedContent = "";
+			flushedReasoningText = "";
 			setError(data.message || data.error || "An error occurred");
 			setIsTyping(false);
 			setStatus(null);
