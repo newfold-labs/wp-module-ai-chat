@@ -81,7 +81,7 @@
 		color: var(--nfd-ai-chat-color-primary);
 		animation: nfd-ai-chat-spin 1s linear infinite;
 
-		.nfd-ai-chat-tool-execution__item-title {
+		+ .nfd-ai-chat-tool-execution__item-title {
 			font-weight: 500;
 		}
 	}
