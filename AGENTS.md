@@ -1,0 +1,38 @@
+# Agent guidance – wp-module-ai-chat
+
+This file gives AI agents a quick orientation to the repo. For full detail, see the **docs/** directory.
+
+## What this project is
+
+- **wp-module-ai-chat** – AI Chat module for WordPress. Registers with the Newfold Module Loader; no runtime Composer requires. Maintained by Newfold Labs.
+
+- **Stack:** PHP 7.3+. No runtime Composer deps; see require-dev for lint.
+
+- **Architecture:** Registers with the loader; provides AI chat UI/integration. See docs/integration.md.
+
+## Key paths
+
+| Purpose | Location |
+|---------|----------|
+| Bootstrap | `bootstrap.php` |
+| Includes | `includes/` |
+| Tests | `tests/` (if any) |
+
+## Essential commands
+
+```bash
+composer install
+composer run lint
+composer run clean
+```
+
+## Documentation
+
+- **Full documentation** is in **docs/**. Start with **docs/index.md**.
+- **CLAUDE.md** is a symlink to this file (AGENTS.md).
+
+---
+
+## Keeping documentation current
+
+When you change code, features, or workflows, update the docs. When cutting a release, update **docs/changelog.md**.
