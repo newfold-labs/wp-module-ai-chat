@@ -245,18 +245,22 @@ const ToolExecutionList = ({ executedTools = [], toolResults = [] }) => {
 				<span className="nfd-ai-chat-tool-execution__header-count">({totalTools})</span>
 			</button>
 
-			{isExpanded && (
-				<div className="nfd-ai-chat-tool-execution__list">
-					{executedTools.map((tool, index) => (
-						<ToolExecutionItem
-							key={tool.id || `tool-${index}`}
-							tool={tool}
-							isError={tool.isError}
-							result={resultsMap.get(tool.id)}
-						/>
-					))}
+			<div className={classnames("nfd-ai-chat-tool-execution__collapse", {
+					"nfd-ai-chat-tool-execution__collapse--open": isExpanded,
+				})}>
+				<div className="nfd-ai-chat-tool-execution__collapse-inner">
+					<div className="nfd-ai-chat-tool-execution__list">
+						{executedTools.map((tool, index) => (
+							<ToolExecutionItem
+								key={tool.id || `tool-${index}`}
+								tool={tool}
+								isError={tool.isError}
+								result={resultsMap.get(tool.id)}
+							/>
+						))}
+					</div>
 				</div>
-			)}
+			</div>
 		</div>
 	);
 };

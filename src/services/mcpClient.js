@@ -14,7 +14,7 @@ import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/
 /**
  * Custom error class for MCP operations
  */
-export class MCPError extends Error {
+class MCPError extends Error {
 	constructor(message, code = null, details = null) {
 		super(message);
 		this.name = "MCPError";
@@ -29,7 +29,7 @@ export class MCPError extends Error {
  * @param {Object} options           Configuration options
  * @param {string} options.configKey - Window config object name (default: 'nfdAIChat')
  */
-export class WordPressMCPClient {
+class WordPressMCPClient {
 	constructor(options = {}) {
 		this.configKey = options.configKey || "nfdAIChat";
 		this.client = null;
@@ -427,7 +427,3 @@ export const createMCPClient = (options = {}) => {
 	return new WordPressMCPClient(options);
 };
 
-// Default singleton instance for backwards compatibility
-export const mcpClient = new WordPressMCPClient();
-
-export default mcpClient;

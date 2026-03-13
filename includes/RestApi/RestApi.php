@@ -32,13 +32,7 @@ class RestApi {
 	 * @return void
 	 */
 	public function register_routes() {
-		$controllers = array(
-			new AIChatController(),
-			new NfdAgentsChatConfigController( $this->container ),
-		);
-
-		foreach ( $controllers as $controller ) {
-			$controller->register_routes();
-		}
+		$controller = new NfdAgentsChatConfigController( $this->container );
+		$controller->register_routes();
 	}
 }

@@ -45,6 +45,77 @@ const clearTypingTimeout = (typingTimeoutRef) => {
 };
 
 /**
+ * Normalize a string for dedup comparison.
+ * - Inserts a space after sentence-ending punctuation that butts against a
+ *   letter (the model often concatenates like "accordingly.I will" or
+ *   "plan.then do").
+ * - Collapses all whitespace runs to a single space.
+ *
+ * Both sides of the dedup get the same transform, so over-normalizing
+ * (e.g. "e.g.foo" → "e. g. foo") is safe — the match still holds.
+ */
+const normalizeSentences = (s) =>
+	s
+		.replace(/([.!?])([A-Za-z])/g, "$1 $2")
+		.replace(/\s+/g, " ")
+		.trim();
+
+/**
+ * Strip previously-displayed reasoning prefixes from the final response.
+ *
+ * The model re-includes its "planning" text (from one or more tool-call
+ * rounds) at the start of the post-tool summary, often without whitespace
+ * between the pieces.  This helper strips each reasoning text sequentially
+ * from the beginning of the final response and returns only the new tail,
+ * or null when the entire message is a duplicate.
+ *
+ * @param {string}   text       Final response text (already trimmed/filtered)
+ * @param {string[]} reasonings Array of previously-flushed reasoning texts
+ * @return {string|null}        Deduplicated text, or null if fully duplicate
+ */
+const deduplicateReasoning = (text, reasonings) => {
+	if (!reasonings || reasonings.length === 0) {
+		return text;
+	}
+
+	let remaining = normalizeSentences(text);
+
+	for (const r of reasonings) {
+		const normR = normalizeSentences(r);
+		if (!normR) {
+			continue;
+		}
+		if (remaining.startsWith(normR)) {
+			remaining = remaining.substring(normR.length).trim();
+			continue;
+		}
+
+		// Fallback: whitespace-insensitive prefix match.
+		// Reasoning models can produce token-boundary artifacts where
+		// streamed text differs from the final payload only by whitespace
+		// (e.g. "a4-column" streamed vs "a 4-column" in final text).
+		const compactR = normR.replace(/\s/g, "");
+		const compactRemaining = remaining.replace(/\s/g, "");
+		if (compactRemaining.startsWith(compactR)) {
+			// Walk through `remaining` consuming non-space characters
+			// until we've matched all of compactR, then strip that prefix.
+			let matched = 0;
+			let idx = 0;
+			while (idx < remaining.length && matched < compactR.length) {
+				if (remaining[idx] !== " ") {
+					matched++;
+				}
+				idx++;
+			}
+			remaining = remaining.substring(idx).trim();
+		}
+	}
+
+	// If we stripped everything, the message was fully duplicate.
+	return remaining || null;
+};
+
+/**
  * Helper: finalize typing state after content is received.
  *
  * @param {Object}   deps                    Subset of handler deps
@@ -66,8 +137,9 @@ const finalizeTyping = ({ setIsTyping, setStatus, setCurrentResponse, typingTime
  * @param {Function} setMessages State setter
  * @param {string}   content     Message content
  * @param {string}   [idSuffix]  Optional suffix for message ID
+ * @param {boolean}  [animate]   Whether to animate typing (default true)
  */
-const addAssistantMsg = (setMessages, content, idSuffix = "") => {
+const addAssistantMsg = (setMessages, content, idSuffix = "", animate = true) => {
 	setMessages((prev) => [
 		...prev,
 		{
@@ -76,7 +148,7 @@ const addAssistantMsg = (setMessages, content, idSuffix = "") => {
 			type: "assistant",
 			content,
 			timestamp: new Date(),
-			animateTyping: true,
+			animateTyping: animate,
 		},
 	]);
 };
@@ -113,7 +185,40 @@ export function createMessageHandler(deps) {
 		setError,
 		saveSessionId,
 		saveConversationId,
+		onToolCallRef,
 	} = deps;
+
+	// Closure variables that track streaming text synchronously.
+	// React 18 batching means we cannot reliably read currentResponse
+	// from inside another setState callback, so we mirror it here.
+	let lastStreamedContent = "";
+	let flushedReasoningTexts = [];
+	let suppressDisplay = false;
+	let reasoningStartTime = null;
+	// Accumulated reasoning text across multiple tool-call rounds.
+	// Merged into ONE thinking toggle instead of creating separate ones.
+	let accumulatedReasoningContent = "";
+
+	/**
+	 * Mark any active (uncompleted) reasoning messages as complete.
+	 * Called at the start of tool_call and message/complete handlers
+	 * so the previously-active reasoning toggle collapses.
+	 */
+	const completeActiveReasoning = () => {
+		setMessages((prev) => {
+			const hasActive = prev.some(
+				(m) => m.id?.endsWith("-reasoning") && !m.reasoningComplete
+			);
+			if (!hasActive) {
+				return prev;
+			}
+			return prev.map((m) =>
+				m.id?.endsWith("-reasoning") && !m.reasoningComplete
+					? { ...m, reasoningComplete: true }
+					: m
+			);
+		});
+	};
 
 	return function handleMessage(data) {
 		// If user has stopped generation, ignore all messages except session_established
@@ -131,6 +236,9 @@ export function createMessageHandler(deps) {
 
 		// --- typing_start ---
 		if (data.type === "typing_start") {
+			if (!reasoningStartTime) {
+				reasoningStartTime = Date.now();
+			}
 			setIsTyping(true);
 			setStatus(getStatusForEventType("typing_start"));
 			clearTypingTimeout(typingTimeoutRef);
@@ -139,6 +247,10 @@ export function createMessageHandler(deps) {
 
 		// --- typing_stop ---
 		if (data.type === "typing_stop") {
+			lastStreamedContent = "";
+			flushedReasoningTexts = [];
+			suppressDisplay = false;
+			reasoningStartTime = null;
 			setIsTyping(false);
 			setStatus(null);
 			setCurrentResponse("");
@@ -151,8 +263,25 @@ export function createMessageHandler(deps) {
 			if (isStoppedRef.current) {
 				return;
 			}
-			const content = data.content || data.chunk || data.text || "";
+
+			// Between tool_call and tool_result, SK's streaming callback sends
+			// a summary chunk containing the FULL accumulated text from the
+			// previous round.  Allowing it through would re-populate
+			// lastStreamedContent with already-flushed text, creating duplicate
+			// reasoning toggles on the next tool_call flush.  The tool_result
+			// handler resets suppressDisplay = false before real new-round
+			// chunks arrive, so skipping here is safe.
+			if (suppressDisplay) {
+				return;
+			}
+
+			const content = data.content || data.chunk || data.text || data.message || "";
 			if (content) {
+				// Update the mirror variable SYNCHRONOUSLY before React's
+				// batched setState so that tool_call (which may arrive in
+				// the very next macrotask) always reads the latest value.
+				lastStreamedContent += content;
+
 				setCurrentResponse((prev) => {
 					const newContent = prev + content;
 					if (
@@ -160,6 +289,7 @@ export function createMessageHandler(deps) {
 						newContent.length < 100 &&
 						isInitialGreeting(newContent)
 					) {
+						lastStreamedContent = "";
 						return "";
 					}
 					setIsTyping(true);
@@ -202,15 +332,30 @@ export function createMessageHandler(deps) {
 			const filtered = filterMessage(structuredMessage, hasUserMessageRef.current);
 
 			if (filtered) {
-				// Finalize any current streaming response first
-				setCurrentResponse((prev) => {
-					if (prev) {
-						addAssistantMsg(setMessages, prev, "-streaming");
-					}
-					return "";
-				});
+				suppressDisplay = false;
+				completeActiveReasoning();
+				accumulatedReasoningContent = "";
+				const bufferedContent = lastStreamedContent.trim();
+				lastStreamedContent = "";
+				setCurrentResponse("");
 
-				addAssistantMsg(setMessages, filtered);
+				let finalText = filtered;
+				if (flushedReasoningTexts.length > 0) {
+					finalText = deduplicateReasoning(filtered, flushedReasoningTexts);
+					// Keep reasoning messages — they're permanent collapsed toggles.
+					// Only add the final response as a new message below them.
+					if (finalText) {
+						addAssistantMsg(setMessages, finalText);
+					}
+					reasoningStartTime = null;
+				} else {
+					if (bufferedContent) {
+						addAssistantMsg(setMessages, bufferedContent, "-streaming");
+					}
+					addAssistantMsg(setMessages, finalText);
+				}
+
+				flushedReasoningTexts = [];
 				finalizeTyping(deps);
 			}
 			return;
@@ -219,11 +364,129 @@ export function createMessageHandler(deps) {
 		// --- tool_call ---
 		if (data.type === "tool_call") {
 			setStatus(getStatusForEventType("tool_call"));
+
+			// Do NOT call completeActiveReasoning() here — we want to keep
+			// the toggle open and APPEND text from subsequent reasoning rounds
+			// so the user sees ONE unified thinking toggle, not separate ones.
+
+			// Flush any accumulated reasoning text into the single toggle.
+			const reasoningText = lastStreamedContent.trim();
+			lastStreamedContent = "";
+			setCurrentResponse("");
+			if (reasoningText) {
+				flushedReasoningTexts.push(reasoningText);
+
+				// Append to the accumulated reasoning for the unified toggle.
+				accumulatedReasoningContent +=
+					(accumulatedReasoningContent ? "\n\n" : "") + reasoningText;
+
+				const durationSeconds = reasoningStartTime
+					? Math.round((Date.now() - reasoningStartTime) / 1000)
+					: 0;
+
+				// Update existing active reasoning message or create one.
+				setMessages((prev) => {
+					const idx = prev.findLastIndex(
+						(m) => m.id?.endsWith("-reasoning") && !m.reasoningComplete
+					);
+					if (idx !== -1) {
+						// Append to existing — single unified toggle
+						return [
+							...prev.slice(0, idx),
+							{
+								...prev[idx],
+								content: accumulatedReasoningContent,
+								durationSeconds,
+							},
+							...prev.slice(idx + 1),
+						];
+					}
+					// Create new active reasoning message
+					return [
+						...prev,
+						{
+							id: `msg-${Date.now()}-reasoning`,
+							role: "assistant",
+							type: "assistant",
+							content: accumulatedReasoningContent,
+							timestamp: new Date(),
+							animateTyping: false,
+							reasoningComplete: false,
+							durationSeconds,
+						},
+					];
+				});
+			}
+
+			// Suppress post-tool streaming so the deduped final response
+			// can appear fresh with typewriter animation.
+			suppressDisplay = true;
+
+			// Reset the reasoning timer so each streaming round is measured
+			// from when it begins.
+			reasoningStartTime = Date.now();
+
+			// Keep typing indicator visible between reasoning flush and tool
+			// execution start.  Without this, the dots disappear briefly and
+			// the UI feels "done" even though the agent is still working.
+			setIsTyping(true);
+			clearTypingTimeout(typingTimeoutRef);
+
+			// Dispatch tool calls to the consumer (e.g. editor chat) for
+			// client-side execution (block editing, style changes, etc.).
+			const toolCalls = data.function_content;
+
+			if (onToolCallRef?.current && Array.isArray(toolCalls) && toolCalls.length > 0) {
+				const normalized = toolCalls.map((tc, idx) => {
+					try {
+						const id = tc.id || `tool-${Date.now()}-${idx}`;
+						const rawName = tc.name || tc.function_name || "";
+						const rawArgs =
+							typeof tc.arguments === "string" ? JSON.parse(tc.arguments) : tc.arguments || {};
+
+						// The gateway wraps WordPress MCP calls in a meta-tool
+						// (e.g. "WordPressPlugin-call_wordpress_tool"). Unwrap to
+						// expose the actual tool name and arguments to consumers.
+						if (rawName.endsWith("-call_wordpress_tool") && rawArgs.tool_name) {
+							let innerArgs = rawArgs.tool_arguments || {};
+							if (typeof innerArgs === "string") {
+								try {
+									innerArgs = JSON.parse(innerArgs);
+								} catch (_) {
+									/* keep as-is */
+								}
+							}
+							// Normalize: MCP uses slashes (blu/edit-block), client uses dashes (blu-edit-block)
+							const toolName = rawArgs.tool_name.replace(/\//g, "-");
+							return { id, name: toolName, arguments: innerArgs };
+						}
+
+						return { id, name: rawName, arguments: rawArgs };
+					} catch (err) {
+						console.error("[AI Chat] Failed to normalize tool call:", tc, err); // eslint-disable-line no-console
+						return {
+							id: tc.id || `tool-${Date.now()}-${idx}`,
+							name: tc.name || "unknown",
+							arguments: {},
+						};
+					}
+				});
+				try {
+					onToolCallRef.current(normalized);
+				} catch (err) {
+					console.error("[AI Chat] Tool call handler threw an error:", err); // eslint-disable-line no-console
+				}
+			}
 			return;
 		}
 
 		// --- tool_result ---
 		if (data.type === "tool_result") {
+			// Allow the next reasoning round to stream to the UI.
+			// Without this, suppressDisplay stays true from the prior tool_call
+			// and all subsequent reasoning text goes to lastStreamedContent only
+			// (invisible to the user for the entire duration).
+			suppressDisplay = false;
 			setStatus(getStatusForEventType("tool_result"));
 			if (data.conversation_id || data.conversationId) {
 				const newConversationId = data.conversation_id || data.conversationId;
@@ -235,48 +498,55 @@ export function createMessageHandler(deps) {
 
 		// --- message / complete ---
 		if (data.type === "message" || data.type === "complete") {
-			let hasContent = false;
-			setCurrentResponse((prev) => {
-				if (prev) {
-					const trimmedContent = prev.trim();
-					if (
-						trimmedContent === "No content provided" ||
-						trimmedContent === "sales_requested" ||
-						trimmedContent.toLowerCase() === "sales_requested"
-					) {
-						return "";
-					}
-					if (!hasUserMessageRef.current && prev.length < 150 && isInitialGreeting(prev)) {
-						return "";
-					}
-					setMessages((prevMessages) => [
-						...prevMessages,
-						{
-							id: `msg-${Date.now()}`,
-							role: "assistant",
-							type: "assistant",
-							content: prev,
-							timestamp: new Date(),
-							animateTyping: true,
-						},
-					]);
-					hasContent = true;
-				}
-				return "";
-			});
+			suppressDisplay = false;
 
-			if (!hasContent) {
-				const payloadMessage = data.message || data.response_content?.message;
-				const filtered = filterMessage(payloadMessage, hasUserMessageRef.current);
-				if (filtered) {
-					addAssistantMsg(setMessages, filtered);
-					hasContent = true;
-				}
+			// Collapse any still-active reasoning toggle.
+			completeActiveReasoning();
+			accumulatedReasoningContent = "";
+
+			const buffered = lastStreamedContent.trim();
+			lastStreamedContent = "";
+			setCurrentResponse("");
+
+			// Determine final content.
+			// IMPORTANT: prefer the payload text over the buffer.
+			// lastStreamedContent may be truncated due to React 18 batching —
+			// setCurrentResponse callbacks update it inside state transitions
+			// which may not have flushed by the time this handler reads it.
+			// The payload is authoritative (complete text from the backend).
+			const payloadMessage = data.message || data.response_content?.message;
+			const payloadFiltered = filterMessage(payloadMessage, hasUserMessageRef.current);
+
+			let finalContent = null;
+			// If there was streaming, the user already saw the text — skip animation.
+			let fromBuffer = buffered.length > 0;
+
+			if (payloadFiltered) {
+				finalContent = payloadFiltered;
+			} else if (buffered) {
+				finalContent = filterMessage(buffered, hasUserMessageRef.current);
 			}
 
-			if (hasContent) {
-				finalizeTyping(deps);
+			// Deduplicate reasoning prefixes from the final response
+			if (finalContent && flushedReasoningTexts.length > 0) {
+				finalContent = deduplicateReasoning(finalContent, flushedReasoningTexts);
 			}
+
+			// Keep reasoning messages — they're permanent collapsed toggles.
+			// Only add the final response as a new message below them.
+			if (flushedReasoningTexts.length > 0) {
+				if (finalContent) {
+					addAssistantMsg(setMessages, finalContent);
+				}
+				reasoningStartTime = null;
+			} else if (finalContent) {
+				// No tool calls — standard message commit.
+				// fromBuffer means user already saw it streamed, skip animation.
+				addAssistantMsg(setMessages, finalContent, "", !fromBuffer);
+			}
+
+			flushedReasoningTexts = [];
+			finalizeTyping(deps);
 			return;
 		}
 
@@ -288,6 +558,10 @@ export function createMessageHandler(deps) {
 
 		// --- handoff_request ---
 		if (data.type === "handoff_request") {
+			lastStreamedContent = "";
+			flushedReasoningTexts = [];
+			accumulatedReasoningContent = "";
+			reasoningStartTime = null;
 			setStatus(getStatusForEventType("handoff_request"));
 			const messageContent = data.message || data.response_content?.message;
 			const filtered = filterMessage(messageContent, hasUserMessageRef.current);
@@ -304,6 +578,11 @@ export function createMessageHandler(deps) {
 
 		// --- error ---
 		if (data.type === "error") {
+			lastStreamedContent = "";
+			flushedReasoningTexts = [];
+			accumulatedReasoningContent = "";
+			suppressDisplay = false;
+			reasoningStartTime = null;
 			setError(data.message || data.error || "An error occurred");
 			setIsTyping(false);
 			setStatus(null);

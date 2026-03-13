@@ -30,6 +30,9 @@ export const isInitialGreeting = (content) => {
 		// Match "Hello! How can I assist you today? Feel free to ask me anything..."
 		/^hello!?\s+how\s+can\s+i\s+assist\s+you\s+today/i,
 		/^hello!?\s+how\s+can\s+i\s+assist\s+you.*feel\s+free/i,
+		// Match "Hello! What would you like to change or edit on your page?"
+		/^hello!?\s+what\s+would\s+you\s+like/i,
+		/^hi!?\s+what\s+would\s+you\s+like/i,
 	];
 
 	// Check if message matches greeting patterns
@@ -39,16 +42,18 @@ export const isInitialGreeting = (content) => {
 	// This catches variations like "Hello! How can I assist you today? Feel free to ask me anything..."
 	const hasGreetingKeywords =
 		normalized.includes("hello") &&
-		(normalized.includes("assist") || normalized.includes("help")) &&
+		(normalized.includes("assist") || normalized.includes("help") || normalized.includes("what would you like")) &&
 		(normalized.includes("today") ||
 			normalized.includes("feel free") ||
-			normalized.includes("ask"));
+			normalized.includes("ask") ||
+			normalized.includes("change") ||
+			normalized.includes("edit"));
 
 	// Check for very short messages that are likely greetings
 	const isShortGreeting =
 		normalized.length < 150 &&
 		((normalized.includes("hello") &&
-			(normalized.includes("assist") || normalized.includes("help"))) ||
+			(normalized.includes("assist") || normalized.includes("help") || normalized.includes("what would you like"))) ||
 			(normalized.includes("hi") && normalized.includes("help")));
 
 	return isGreeting || hasGreetingKeywords || isShortGreeting;
