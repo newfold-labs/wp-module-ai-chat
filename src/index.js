@@ -8,21 +8,20 @@
 import "./styles/app.scss";
 
 // Services
-export { WordPressMCPClient, createMCPClient, mcpClient, MCPError } from "./services/mcpClient";
+export { createMCPClient } from "./services/mcpClient";
 
 // Hooks
 export { CHAT_STATUS } from "./hooks/useAIChat";
 export { default as useNfdAgentsWebSocket } from "./hooks/useNfdAgentsWebSocket";
 
 // Utils
-export { simpleHash, generateSessionId, debounce } from "./utils/helpers";
+export { generateSessionId } from "./utils/helpers";
 export { containsMarkdown, parseMarkdown } from "./utils/markdownParser";
 export { sanitizeHtml, containsHtml } from "./utils/sanitizeHtml";
 
 // NFD Agents Utilities
 export {
 	convertToWebSocketUrl,
-	normalizeUrl,
 	isLocalhost,
 	buildWebSocketUrl,
 } from "./utils/nfdAgents/url";
