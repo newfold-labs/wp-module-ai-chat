@@ -1,7 +1,7 @@
 /**
  * WordPress dependencies
  */
-import { useEffect, useRef, useCallback, useState } from "@wordpress/element";
+import { useEffect, useRef, useCallback, useState, useMemo } from "@wordpress/element";
 import { __ } from "@wordpress/i18n";
 
 /**
@@ -11,6 +11,7 @@ import classnames from "classnames";
 import ErrorAlert from "../ui/ErrorAlert";
 import TypingIndicator from "../ui/TypingIndicator";
 import ChatMessage from "./ChatMessage";
+import ReasoningToggle from "./ReasoningToggle";
 
 /**
  * ChatMessages Component
@@ -74,14 +75,34 @@ const ChatMessages = ({
 	const hasActiveToolExecution =
 		activeToolCall || executedTools.length > 0 || pendingTools.length > 0;
 
-	// Hide the simple "Thinking..." dots when streaming content is already visible.
-	// The streaming text IS the "thinking" — dots are redundant alongside it.
+	// Hide the typing indicator when there's already visible streaming content.
+	// Active reasoning (expanded toggle with streaming text) counts as visible content
+	// so the user sees the reasoning text instead of "Thinking..." dots.
+	// Completed reasoning (collapsed toggle, tools executing) should NOT suppress
+	// the indicator — the tool execution info should be visible below the toggle.
 	const lastMessage = messages[messages.length - 1];
+	const isLastReasoning = lastMessage?.id && lastMessage.id.endsWith("-reasoning");
+	const isActiveReasoning = isLastReasoning && !lastMessage.reasoningComplete && !!lastMessage.content;
 	const hasStreamingContent =
 		isLoading &&
 		!!lastMessage &&
 		(lastMessage.type === "assistant" || lastMessage.role === "assistant") &&
-		lastMessage.animateTyping === true;
+		((lastMessage.animateTyping === true && !isLastReasoning) || isActiveReasoning);
+
+	// When a tool_execution message in the CURRENT turn carries active state,
+	// the inline TypingIndicator handles the display — suppress the standalone
+	// one at the bottom.  Only check messages after the last user message to
+	// avoid previous turns' persisted tool_execution from suppressing the
+	// standalone indicator or leaking state into the current turn.
+	const hasInlineToolExec = useMemo(() => {
+		const lastUserIdx = messages.findLastIndex((m) => m.role === "user");
+		return messages.some(
+			(m, idx) =>
+				idx > lastUserIdx &&
+				m.type === "tool_execution" &&
+				(m.executedTools?.length > 0 || m.activeToolCall || m.pendingTools?.length > 0)
+		);
+	}, [messages]);
 
 	const messagesClassName = classnames("nfd-ai-chat-messages", {
 		"nfd-ai-chat-messages--minimal": messageBubbleStyle === "minimal",
@@ -91,9 +112,39 @@ const ChatMessages = ({
 		<div ref={scrollContainerRef} className={messagesClassName}>
 			{messages.length > 0 &&
 				messages.map((msg, index) => {
-					// Animate typing only for the last assistant message that was received live (not loaded from history/restore)
-					const isLastAssistant =
-						index === messages.length - 1 && (msg.type === "assistant" || msg.role === "assistant");
+					const isAssistant = msg.type === "assistant" || msg.role === "assistant";
+					const isLastAssistant = index === messages.length - 1 && isAssistant;
+					const isReasoning = isAssistant && msg.id && msg.id.endsWith("-reasoning");
+
+					// Reasoning — render as a collapsible toggle instead of a message bubble
+					if (isReasoning) {
+						return (
+							<ReasoningToggle
+								key={msg.id}
+								text={msg.content}
+								isActive={!msg.reasoningComplete}
+								durationSeconds={msg.durationSeconds || 0}
+								onContentGrow={onContentGrow}
+							/>
+						);
+					}
+
+					// Tool execution — render using TypingIndicator so all states
+					// (pending, active, completed) appear in a single unified list
+					// at a fixed position in the message flow.
+					if (msg.type === "tool_execution") {
+						return (
+							<TypingIndicator
+								key={msg.id}
+								status={msg.activeToolCall ? "tool_call" : null}
+								activeToolCall={msg.activeToolCall || null}
+								toolProgress={msg.toolProgress || null}
+								executedTools={msg.executedTools || []}
+								pendingTools={msg.pendingTools || []}
+							/>
+						);
+					}
+
 					return (
 						<ChatMessage
 							key={msg.id || index}
@@ -130,16 +181,27 @@ const ChatMessages = ({
 					</button>
 				</p>
 			)}
-			{(isLoading || executedTools.length > 0) &&
-				!(hasStreamingContent && !hasActiveToolExecution) && (
+			{!hasInlineToolExec &&
+				(isLoading || executedTools.length > 0) &&
+				!(hasStreamingContent && !hasActiveToolExecution) &&
+				(hasActiveToolExecution ? (
 					<TypingIndicator
 						status={status}
 						activeToolCall={activeToolCall}
 						toolProgress={toolProgress}
-						executedTools={hasActiveToolExecution || !isLoading ? executedTools : []}
+						executedTools={executedTools}
 						pendingTools={pendingTools}
 					/>
-				)}
+				) : (
+					<ReasoningToggle text="" isActive={true} durationSeconds={0} />
+				))}
+			{/* Show typing indicator after completed tools while the AI
+			    generates its final text response. */}
+			{hasInlineToolExec &&
+				isLoading &&
+				!activeToolCall &&
+				pendingTools.length === 0 &&
+				!hasStreamingContent && <TypingIndicator />}
 		</div>
 	);
 };

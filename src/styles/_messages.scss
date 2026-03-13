@@ -252,6 +252,16 @@
 		}
 	}
 
+	// Tool execution variant: keep the layout wrapper but strip bubble styling
+	// so the tool-execution card renders its own border/background.
+	&--tool-execution .nfd-ai-chat-message__content {
+		background: transparent;
+		border: none;
+		box-shadow: none;
+		padding: 0;
+		max-width: 100%;
+	}
+
 	&--user {
 		justify-content: flex-end;
 
@@ -269,4 +279,128 @@
 			transition: transform 0.15s ease, box-shadow 0.15s ease;
 		}
 	}
+}
+
+// Tighten spacing between consecutive assistant items (reasoning toggle,
+// tool execution, assistant message) so they read as one unified response.
+// The full gap (--nfd-ai-chat-spacing-md) is kept between user ↔ assistant turns.
+//
+// Technique: the parent uses `gap: var(--nfd-ai-chat-spacing-md)`. To reduce
+// the visual gap to --_assistant-group-gap between sibling assistant items,
+// we apply a negative margin that cancels most of the parent gap.
+// If --nfd-ai-chat-spacing-md changes, update --_assistant-group-gap or
+// this formula accordingly.
+.nfd-ai-chat-reasoning-toggle + .nfd-ai-chat-typing-indicator,
+.nfd-ai-chat-reasoning-toggle + .nfd-ai-chat-message--assistant,
+.nfd-ai-chat-typing-indicator + .nfd-ai-chat-message--assistant,
+.nfd-ai-chat-message--tool-execution + .nfd-ai-chat-message--assistant,
+.nfd-ai-chat-message--assistant + .nfd-ai-chat-message--tool-execution,
+.nfd-ai-chat-reasoning-toggle + .nfd-ai-chat-reasoning-toggle {
+	--_assistant-group-gap: 4px;
+	margin-top: calc(var(--_assistant-group-gap) - var(--nfd-ai-chat-spacing-md));
+}
+
+// Reasoning toggle — collapsible toggle for AI reasoning text
+.nfd-ai-chat-reasoning-toggle {
+	margin-bottom: 0;
+
+	&__trigger {
+		display: inline-flex;
+		align-items: center;
+		gap: 4px;
+		background: none;
+		border: none;
+		padding: 2px 0;
+		cursor: pointer;
+		font-size: var(--nfd-ai-chat-font-size-base, 0.875rem);
+		font-family: inherit;
+		color: var(--nfd-ai-chat-color-grey-dark, #888);
+		transition: color 0.15s ease;
+
+		&:hover {
+			color: var(--nfd-ai-chat-color-text, #333);
+		}
+	}
+
+	&__label {
+		line-height: 1.4;
+	}
+
+	&__icon {
+		display: inline-block;
+		font-size: 1.1em;
+		line-height: 1;
+		transition: transform 0.2s ease;
+	}
+
+	&.is-expanded &__icon {
+		transform: rotate(90deg);
+	}
+
+	// Shimmer animation on the label while reasoning is active
+	&.is-active &__label {
+		background: linear-gradient(
+			90deg,
+			var(--nfd-ai-chat-color-grey-dark, #888) 0%,
+			var(--nfd-ai-chat-color-grey-dark, #888) 40%,
+			var(--nfd-ai-chat-color-text, #333) 50%,
+			var(--nfd-ai-chat-color-grey-dark, #888) 60%,
+			var(--nfd-ai-chat-color-grey-dark, #888) 100%
+		);
+		background-size: 200% 100%;
+		-webkit-background-clip: text;
+		background-clip: text;
+		-webkit-text-fill-color: transparent;
+		animation: nfd-ai-chat-reasoning-label-shimmer 2s ease-in-out infinite;
+	}
+
+	&__content {
+		font-size: var(--nfd-ai-chat-font-size-base, inherit);
+		line-height: 1.5;
+		color: var(--nfd-ai-chat-color-grey-dark, #888);
+		padding: 6px 0 2px 0;
+		white-space: pre-wrap;
+		animation: nfd-ai-chat-reasoning-expand 0.2s ease-out;
+	}
+
+	// Gentle pulse on the reasoning text while it's still streaming.
+	// Stops automatically when .is-active is removed (reasoning complete).
+	&.is-active &__content {
+		animation: nfd-ai-chat-reasoning-text-pulse 2s ease-in-out infinite;
+
+		// Blinking cursor at end of text signals "still processing" even
+		// when no new chunks arrive (e.g. during server-side tool execution).
+		&::after {
+			content: "▍";
+			display: inline;
+			margin-left: 1px;
+			animation: nfd-ai-chat-reasoning-cursor-blink 0.8s step-end infinite;
+		}
+	}
+}
+
+@keyframes nfd-ai-chat-reasoning-label-shimmer {
+	0% { background-position: 100% 0; }
+	100% { background-position: -100% 0; }
+}
+
+@keyframes nfd-ai-chat-reasoning-expand {
+	from {
+		opacity: 0;
+		max-height: 0;
+	}
+	to {
+		opacity: 1;
+		max-height: 2000px;
+	}
+}
+
+@keyframes nfd-ai-chat-reasoning-text-pulse {
+	0%, 100% { opacity: 1; }
+	50% { opacity: 0.5; }
+}
+
+@keyframes nfd-ai-chat-reasoning-cursor-blink {
+	0%, 100% { opacity: 1; }
+	50% { opacity: 0; }
 }
