@@ -54,6 +54,22 @@
 	margin-left: 2px;
 }
 
+// Animated collapse/expand wrapper using CSS grid
+.nfd-ai-chat-tool-execution__collapse {
+	display: grid;
+	grid-template-rows: 0fr;
+	transition: grid-template-rows 0.25s ease;
+
+	&--open {
+		grid-template-rows: 1fr;
+	}
+}
+
+.nfd-ai-chat-tool-execution__collapse-inner {
+	overflow: hidden;
+	min-height: 0;
+}
+
 .nfd-ai-chat-tool-execution__list {
 	display: flex;
 	flex-direction: column;
@@ -61,11 +77,25 @@
 	gap: 2px;
 }
 
+@keyframes nfd-ai-chat-tool-item-enter {
+
+	from {
+		opacity: 0;
+		transform: translateY(-4px);
+	}
+
+	to {
+		opacity: 1;
+		transform: translateY(0);
+	}
+}
+
 .nfd-ai-chat-tool-execution__item {
 	display: flex;
 	flex-direction: column;
 	gap: 2px;
 	padding: 4px 0;
+	animation: nfd-ai-chat-tool-item-enter 0.2s ease both;
 }
 
 .nfd-ai-chat-tool-execution__item-header {
