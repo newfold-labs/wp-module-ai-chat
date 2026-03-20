@@ -60,6 +60,7 @@ const useNfdAgentsWebSocket = ({
 	consumerType = "editor_chat",
 	autoLoadHistory = true,
 	getConnectionFailedFallbackMessage,
+	onToolCall,
 } = {}) => {
 	// ---------------------------------------------------------------------------
 	// Storage keys (site-scoped; single source of truth from storageKeys.js)
@@ -140,6 +141,8 @@ const useNfdAgentsWebSocket = ({
 	const typingTimeoutRef = useRef(null);
 	const isInitialMount = useRef(true);
 	const messagesRef = useRef([]);
+	const onToolCallRef = useRef(onToolCall);
+	onToolCallRef.current = onToolCall;
 	const connectionStateRef = useRef(connectionState);
 	const prevConnectionStateRef = useRef(connectionState);
 
@@ -333,6 +336,7 @@ const useNfdAgentsWebSocket = ({
 				setError,
 				saveSessionId,
 				saveConversationId,
+				onToolCallRef,
 			});
 
 			ws.onmessage = (event) => {
@@ -649,6 +653,42 @@ const useNfdAgentsWebSocket = ({
 	);
 
 	// ---------------------------------------------------------------------------
+	// sendToolResult(toolCallId, toolName, result) — Sends a tool_result message
+	// back to the backend so call_wordpress_tool() can return the real data to the AI.
+	// ---------------------------------------------------------------------------
+	const sendToolResult = useCallback(
+		(toolCallId, toolName, result) => {
+			if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
+				// eslint-disable-next-line no-console
+				console.warn("[AI Chat] Cannot send tool result - WebSocket not open");
+				return false;
+			}
+
+			try {
+				const resultStr =
+					typeof result === "string"
+						? result
+						: JSON.stringify(result);
+				wsRef.current.send(
+					JSON.stringify({
+						type: "tool_result",
+						tool_call_id: toolCallId,
+						tool_name: toolName,
+						message: resultStr,
+						result,
+					})
+				);
+				return true;
+			} catch (err) {
+				// eslint-disable-next-line no-console
+				console.error("[AI Chat] Failed to send tool result:", err);
+				return false;
+			}
+		},
+		[]
+	);
+
+	// ---------------------------------------------------------------------------
 	// disconnect() — Close WebSocket, clear reconnect and typing timeouts, set state to disconnected.
 	// ---------------------------------------------------------------------------
 	const disconnect = useCallback(() => {
@@ -944,6 +984,7 @@ const useNfdAgentsWebSocket = ({
 		getSessionId,
 		sendMessage,
 		sendSystemMessage,
+		sendToolResult,
 		isConnected,
 		isConnecting,
 		error,

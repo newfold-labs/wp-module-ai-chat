@@ -74,28 +74,3 @@ export const buildWebSocketUrl = (config, sessionId, consumerType) => {
 	return url;
 };
 
-/**
- * Normalize site URL to ensure it has a protocol.
- * Adds http:// for localhost, https:// for other URLs.
- *
- * @param {string} siteUrl Site URL to normalize
- * @return {string} Normalized URL with protocol
- */
-export const normalizeUrl = (siteUrl) => {
-	if (!siteUrl || typeof siteUrl !== "string") {
-		return siteUrl;
-	}
-
-	// If already has protocol, return as-is
-	if (siteUrl.match(/^https?:\/\//)) {
-		return siteUrl;
-	}
-
-	// Check if it's localhost and default to http://
-	if (isLocalhost(siteUrl)) {
-		return `http://${siteUrl}`;
-	}
-
-	// For other URLs, default to https://
-	return `https://${siteUrl}`;
-};
