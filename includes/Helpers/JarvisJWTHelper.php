@@ -19,11 +19,14 @@ class JarvisJWTHelper {
 	const TRANSIENT_KEY_JWT = 'nfd_ai_chat_jarvis_jwt';
 
 	/**
-	 * Minimum seconds until expiry to return a cached token; below this we refetch (safety buffer).
+	 * Minimum seconds until expiry to return a cached token; below this we refetch.
+	 * Must be at least as large as the client's proactive refresh window (e.g. 5 min)
+	 * so that when the client "refreshes" by re-fetching config, it gets a new token
+	 * from Hiive instead of the same cached token.
 	 *
 	 * @var int
 	 */
-	const MIN_SECONDS_UNTIL_EXPIRY = 60;
+	const MIN_SECONDS_UNTIL_EXPIRY = 360;
 
 	/**
 	 * Resolve Jarvis JWT: debug constant, transient cache, or Hiive API (jarvis_jwt only).
