@@ -13,6 +13,7 @@
 const SENTENCE_STARTER_WORDS_AFTER_URL = [
 	"Would",
 	"If",
+	"Word",
 	"Like",
 	"And",
 	"But",
