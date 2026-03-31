@@ -18,15 +18,15 @@ import classnames from "classnames";
 
 /** Status key → user-facing label for the simple typing state (single place for copy; i18n-ready). */
 const STATUS_LABELS = {
-	[TYPING_STATUS.PROCESSING]: __("Processing…", "wp-module-ai-chat"),
+	[TYPING_STATUS.PROCESSING]: __("Still working…", "wp-module-ai-chat"),
 	[TYPING_STATUS.CONNECTING]: __("Getting your site ready…", "wp-module-ai-chat"),
 	[TYPING_STATUS.WS_CONNECTING]: __("Connecting…", "wp-module-ai-chat"),
-	[TYPING_STATUS.TOOL_CALL]: __("Looking this up…", "wp-module-ai-chat"),
+	[TYPING_STATUS.TOOL_CALL]: __("Still working…", "wp-module-ai-chat"),
 	[TYPING_STATUS.WORKING]: __("Almost there…", "wp-module-ai-chat"),
-	[TYPING_STATUS.RECEIVED]: __("Message received", "wp-module-ai-chat"),
-	[TYPING_STATUS.GENERATING]: __("Thinking…", "wp-module-ai-chat"),
-	[TYPING_STATUS.SUMMARIZING]: __("Summarizing results", "wp-module-ai-chat"),
-	[TYPING_STATUS.COMPLETED]: __("Processing", "wp-module-ai-chat"),
+	[TYPING_STATUS.RECEIVED]: __("Still working…", "wp-module-ai-chat"),
+	[TYPING_STATUS.GENERATING]: __("Still working…", "wp-module-ai-chat"),
+	[TYPING_STATUS.SUMMARIZING]: __("Still working…", "wp-module-ai-chat"),
+	[TYPING_STATUS.COMPLETED]: __("Still working…", "wp-module-ai-chat"),
 	[TYPING_STATUS.FAILED]: __("Error occurred", "wp-module-ai-chat"),
 };
 
@@ -119,8 +119,8 @@ const TypingIndicator = ({
 	executedTools = [],
 	pendingTools = [],
 }) => {
-	const [isExpanded, setIsExpanded] = useState(true);
 	const isExecuting = !!activeToolCall;
+	const [isExpanded, setIsExpanded] = useState(isExecuting);
 	// Show "summarizing" state when waiting between tool batch and final response.
 	const isBetweenBatches =
 		!isExecuting && status === TYPING_STATUS.SUMMARIZING && executedTools.length > 0;
@@ -128,11 +128,14 @@ const TypingIndicator = ({
 	useEffect(() => {
 		if (isExecuting || isBetweenBatches) {
 			setIsExpanded(true);
+		} else if (executedTools.length > 0) {
+			// Auto-collapse once all tools finish and the final message arrives.
+			setIsExpanded(false);
 		}
-	}, [isExecuting, isBetweenBatches]);
+	}, [isExecuting, isBetweenBatches, executedTools.length]);
 
 	const getStatusText = () => {
-		return STATUS_LABELS[status] ?? __("Thinking…", "wp-module-ai-chat");
+		return STATUS_LABELS[status] ?? __("Still working…", "wp-module-ai-chat");
 	};
 
 	// Show expandable tool list when any tools are active, done, or queued.
@@ -174,7 +177,7 @@ const TypingIndicator = ({
 
 	if (hasToolActivity) {
 		return (
-			<div className="nfd-ai-chat-message nfd-ai-chat-message--assistant">
+			<div className="nfd-ai-chat-message nfd-ai-chat-message--assistant nfd-ai-chat-message--tool-execution">
 				<div className="nfd-ai-chat-message__content">
 					<div
 						className={classnames("nfd-ai-chat-tool-execution", {
@@ -196,8 +199,11 @@ const TypingIndicator = ({
 							{renderHeaderLabel()}
 						</button>
 
-						{isExpanded && (
-							<div className="nfd-ai-chat-tool-execution__list">
+						<div className={classnames("nfd-ai-chat-tool-execution__collapse", {
+							"nfd-ai-chat-tool-execution__collapse--open": isExpanded,
+						})}>
+						<div className="nfd-ai-chat-tool-execution__collapse-inner">
+						<div className="nfd-ai-chat-tool-execution__list">
 								{executedTools.map((tool, index) => (
 									<ToolExecutionItem
 										key={tool.id || `executed-${index}`}
@@ -242,7 +248,8 @@ const TypingIndicator = ({
 									/>
 								))}
 							</div>
-						)}
+						</div>
+						</div>
 					</div>
 				</div>
 			</div>
@@ -253,11 +260,6 @@ const TypingIndicator = ({
 		<div className="nfd-ai-chat-message nfd-ai-chat-message--assistant">
 			<div className="nfd-ai-chat-message__content">
 				<div className="nfd-ai-chat-typing-indicator">
-					<span className="nfd-ai-chat-typing-indicator__dots" aria-hidden="true">
-						<span></span>
-						<span></span>
-						<span></span>
-					</span>
 					<span className="nfd-ai-chat-typing-indicator__text">{getStatusText()}</span>
 				</div>
 			</div>
