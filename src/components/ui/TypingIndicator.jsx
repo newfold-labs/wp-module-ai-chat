@@ -16,6 +16,40 @@ import { getToolDetails } from "../../utils/nfdAgents/typingIndicatorToolDisplay
 import { Loader2, CheckCircle, XCircle, Sparkles, ChevronDown, ChevronRight } from "lucide-react";
 import classnames from "classnames";
 
+/**
+ * Merge executed, active, and pending tools into unified progress groups.
+ * Consecutive same-name tools are batched: "Generating Images (3/6)".
+ */
+const buildProgressGroups = (executed, active, pending) => {
+	const groups = [];
+	const map = new Map();
+
+	const add = (tool, status) => {
+		if (!map.has(tool.name)) {
+			const g = { ...tool, completed: 0, total: 0, activeCount: 0, pendingCount: 0, hasError: false, count: 0 };
+			map.set(tool.name, g);
+			groups.push(g);
+		}
+		const g = map.get(tool.name);
+		g.total++;
+		g.count++;
+		if (status === "completed") {
+			g.completed++;
+			if (tool.isError) g.hasError = true;
+		} else if (status === "active") {
+			g.activeCount++;
+		} else {
+			g.pendingCount++;
+		}
+	};
+
+	executed.forEach((t) => add(t, "completed"));
+	if (active) add(active, "active");
+	pending.forEach((t) => add(t, "pending"));
+
+	return groups;
+};
+
 /** Status key → user-facing label for the simple typing state (single place for copy; i18n-ready). */
 const STATUS_LABELS = {
 	[TYPING_STATUS.PROCESSING]: __("Processing…", "wp-module-ai-chat"),
@@ -87,8 +121,14 @@ const ToolExecutionItem = ({ tool, isActive, progress, isComplete, isError }) =>
 		>
 			<div className="nfd-ai-chat-tool-execution__item-header">
 				{getIcon()}
-				<span className="nfd-ai-chat-tool-execution__item-title">{details.title}</span>
-				{details.params && (
+				<span className="nfd-ai-chat-tool-execution__item-title">
+					{details.title}
+					{tool.total > 1 && (tool.completed < tool.total
+						? ` (${tool.completed}/${tool.total})`
+						: ` (${tool.total})`
+					)}
+				</span>
+				{!(tool.count > 1) && details.params && (
 					<span className="nfd-ai-chat-tool-execution__item-params">{details.params}</span>
 				)}
 			</div>
@@ -198,27 +238,16 @@ const TypingIndicator = ({
 
 						{isExpanded && (
 							<div className="nfd-ai-chat-tool-execution__list">
-								{executedTools.map((tool, index) => (
+								{buildProgressGroups(executedTools, activeToolCall, pendingTools).map((group, index) => (
 									<ToolExecutionItem
-										key={tool.id || `executed-${index}`}
-										tool={tool}
-										isActive={false}
-										isComplete={!tool.isError}
-										isError={tool.isError}
-										progress={null}
+										key={group.id || `group-${index}`}
+										tool={group}
+										isActive={group.activeCount > 0}
+										isComplete={group.completed === group.total && group.total > 0}
+										isError={group.hasError}
+										progress={group.activeCount > 0 ? toolProgress : null}
 									/>
 								))}
-
-								{activeToolCall && (
-									<ToolExecutionItem
-										key={activeToolCall.id || "active"}
-										tool={activeToolCall}
-										isActive={true}
-										isComplete={false}
-										isError={false}
-										progress={toolProgress}
-									/>
-								)}
 
 								{isBetweenBatches && (
 									<ToolExecutionItem
@@ -230,17 +259,6 @@ const TypingIndicator = ({
 										progress={null}
 									/>
 								)}
-
-								{pendingTools.map((tool, index) => (
-									<ToolExecutionItem
-										key={tool.id || `pending-${index}`}
-										tool={tool}
-										isActive={false}
-										isComplete={false}
-										isError={false}
-										progress={null}
-									/>
-								))}
 							</div>
 						)}
 					</div>
@@ -253,12 +271,12 @@ const TypingIndicator = ({
 		<div className="nfd-ai-chat-message nfd-ai-chat-message--assistant">
 			<div className="nfd-ai-chat-message__content">
 				<div className="nfd-ai-chat-typing-indicator">
-					<span className="nfd-ai-chat-typing-indicator__dots" aria-hidden="true">
-						<span></span>
-						<span></span>
-						<span></span>
-					</span>
-					<span className="nfd-ai-chat-typing-indicator__text">{getStatusText()}</span>
+					<Loader2
+						className="nfd-ai-chat-typing-indicator__spinner"
+						size={14}
+						aria-hidden="true"
+					/>
+					<span className="nfd-ai-chat-typing-indicator__text nfd-ai-chat-typing-indicator__text--shimmer">{getStatusText()}</span>
 				</div>
 			</div>
 		</div>

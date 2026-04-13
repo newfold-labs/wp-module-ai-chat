@@ -16,6 +16,24 @@ import classnames from "classnames";
 import { getToolDetails } from "../../utils/nfdAgents/typingIndicatorToolDisplay";
 
 /**
+ * Group consecutive tools with the same name into batched entries.
+ * E.g., 6 generate-image calls become one entry with count=6.
+ */
+const groupTools = (tools) => {
+	const groups = [];
+	for (const tool of tools) {
+		const last = groups[groups.length - 1];
+		if (last && last.name === tool.name) {
+			last.count += 1;
+			if (tool.isError) last.isError = true;
+		} else {
+			groups.push({ ...tool, count: 1 });
+		}
+	}
+	return groups;
+};
+
+/**
  * Safely convert a value to a string for display
  *
  * @param {*} value The value to convert
@@ -179,8 +197,11 @@ const ToolExecutionItem = ({ tool, isError, result }) => {
 						size={12}
 					/>
 				)}
-				<span className="nfd-ai-chat-tool-execution__item-title">{details.title}</span>
-				{details.params && (
+				<span className="nfd-ai-chat-tool-execution__item-title">
+					{details.title}
+					{tool.count > 1 && ` (${tool.count})`}
+				</span>
+				{!(tool.count > 1) && details.params && (
 					<span className="nfd-ai-chat-tool-execution__item-params">{details.params}</span>
 				)}
 			</div>
@@ -207,6 +228,8 @@ const ToolExecutionList = ({ executedTools = [], toolResults = [] }) => {
 		return null;
 	}
 
+	const grouped = groupTools(executedTools);
+
 	// Create a map of results by tool ID for quick lookup
 	const resultsMap = new Map();
 	if (toolResults && Array.isArray(toolResults)) {
@@ -218,7 +241,7 @@ const ToolExecutionList = ({ executedTools = [], toolResults = [] }) => {
 	}
 
 	const hasErrors = executedTools.some((tool) => tool.isError);
-	const totalTools = executedTools.length;
+	const totalTools = grouped.length;
 
 	return (
 		<div
@@ -247,7 +270,7 @@ const ToolExecutionList = ({ executedTools = [], toolResults = [] }) => {
 
 			{isExpanded && (
 				<div className="nfd-ai-chat-tool-execution__list">
-					{executedTools.map((tool, index) => (
+					{grouped.map((tool, index) => (
 						<ToolExecutionItem
 							key={tool.id || `tool-${index}`}
 							tool={tool}
