@@ -1,5 +1,16 @@
 @use "mixins";
 
+// Wrapper that lets us absolutely-position the jump-to-latest pill over the scroll area.
+.nfd-ai-chat-messages-shell {
+	flex: 1 1 0%;
+	min-height: 0;
+	height: 100%;
+	display: flex;
+	flex-direction: column;
+	position: relative;
+	overflow: hidden;
+}
+
 .nfd-ai-chat-messages {
 	display: flex;
 	flex: 1 1 0%; // Use 0% basis to properly fill flex container
@@ -7,8 +18,8 @@
 	overflow-y: auto;
 	overflow-x: hidden;
 	scroll-behavior: smooth;
-	padding: var(--nfd-ai-chat-spacing-lg) var(--nfd-ai-chat-spacing-lg);
-	gap: var(--nfd-ai-chat-spacing-md);
+	padding: 12px 18px 24px;
+	gap: 4px; // Tight default within a sender's run; sender-change rules add breathing room.
 	min-height: 0;
 	max-height: 100%; // Don't exceed parent height
 	background: var(--nfd-ai-chat-color-white);
@@ -34,22 +45,83 @@
 		}
 	}
 
-	// Minimal style: transparent container; user = grey bubble only; assistant = no background (plain text).
-	&--minimal {
+	&__jump {
+		position: absolute;
+		bottom: 12px;
+		left: 50%;
+		transform: translateX(-50%);
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 32px;
+		height: 32px;
+		padding: 0;
+		border: 1px solid var(--nfd-ai-chat-color-border);
+		background: var(--nfd-ai-chat-color-white);
+		color: var(--nfd-ai-chat-color-text-secondary);
+		border-radius: 50%;
+		cursor: pointer;
+		box-shadow: 0 6px 16px rgba(17, 24, 39, 0.08), 0 2px 4px rgba(17, 24, 39, 0.04);
+		z-index: 5;
+		animation: nfd-ai-chat-jump-in 0.2s ease-out both;
+		transition: color 0.15s ease, border-color 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
+
+		&:hover {
+			color: var(--nfd-ai-chat-color-primary);
+			border-color: var(--nfd-ai-chat-color-primary);
+			transform: translateX(-50%) translateY(-1px);
+			box-shadow: 0 8px 20px rgba(17, 24, 39, 0.1), 0 2px 6px rgba(17, 24, 39, 0.06);
+		}
+
+		&:focus-visible {
+			outline: none;
+			color: var(--nfd-ai-chat-color-primary);
+			border-color: var(--nfd-ai-chat-color-primary);
+			box-shadow: 0 0 0 3px var(--nfd-ai-chat-color-primary-light-20);
+		}
+
+		&:active {
+			transform: translateX(-50%) scale(0.96);
+		}
+	}
+}
+
+// Position the shell wrapper so the jump pill anchors to the messages area, not the page.
+.nfd-ai-chat-messages-shell {
+
+	.nfd-ai-chat-messages__jump {
+		position: absolute;
+	}
+}
+
+@keyframes nfd-ai-chat-jump-in {
+
+	from {
+		opacity: 0;
+		transform: translateX(-50%) translateY(8px);
+	}
+
+	to {
+		opacity: 1;
+		transform: translateX(-50%) translateY(0);
+	}
+}
+
+// Minimal style: transparent container; user = grey bubble only; assistant = no background (plain text).
+.nfd-ai-chat-messages--minimal {
+	background: transparent;
+
+	.nfd-ai-chat-message--assistant .nfd-ai-chat-message__content {
 		background: transparent;
+		border: none;
+		box-shadow: none;
+		padding: 4px 0 0 0;
+	}
 
-		.nfd-ai-chat-message--assistant .nfd-ai-chat-message__content {
-			background: transparent;
-			border: none;
-			box-shadow: none;
-			padding: 4px 0 0 0;
-		}
-
-		.nfd-ai-chat-message--user .nfd-ai-chat-message__content {
-			background: var(--nfd-ai-chat-color-background);
-			color: var(--nfd-ai-chat-color-text);
-			box-shadow: none;
-		}
+	.nfd-ai-chat-message--user .nfd-ai-chat-message__content {
+		background: var(--nfd-ai-chat-color-background);
+		color: var(--nfd-ai-chat-color-text);
+		box-shadow: none;
 	}
 }
 
@@ -58,11 +130,16 @@
 	gap: 12px;
 	align-items: flex-start;
 	font-size: var(--nfd-ai-chat-font-size-base);
+	animation: nfd-ai-chat-message-in 0.22s cubic-bezier(0.16, 1, 0.3, 1) both;
 
 	.nfd-ai-chat-message__content {
 
 		> * {
-			margin-bottom: 1rem;
+			margin-bottom: 0.75rem;
+		}
+
+		> *:last-child {
+			margin-bottom: 0;
 		}
 
 		h1,
@@ -71,20 +148,21 @@
 		h4,
 		h5,
 		h6 {
-			line-height: 1.2;
+			line-height: 1.25;
 			font-weight: 600;
-			margin-top: 1.5rem;
-			margin-bottom: 0.75rem;
+			margin-top: 1.25rem;
+			margin-bottom: 0.5rem;
 			color: var(--nfd-ai-chat-color-text);
+			letter-spacing: -0.01em;
 		}
 
 		h1 {
-			font-size: var(--nfd-ai-chat-font-size-xl);
+			font-size: var(--nfd-ai-chat-font-size-lg);
 			margin-top: 0;
 		}
 
 		h2 {
-			font-size: var(--nfd-ai-chat-font-size-lg);
+			font-size: var(--nfd-ai-chat-font-size-md);
 		}
 
 		h3 {
@@ -92,23 +170,17 @@
 			text-transform: initial;
 		}
 
-		h4 {
-			font-size: var(--nfd-ai-chat-font-size-md);
-		}
-
-		h5 {
-			font-size: var(--nfd-ai-chat-font-size-sm);
-		}
-
+		h4,
+		h5,
 		h6 {
-			font-size: var(--nfd-ai-chat-font-size-sm);
-			font-weight: 500;
+			font-size: var(--nfd-ai-chat-font-size-base);
+			font-weight: 600;
 		}
 
 		p {
 			font-size: var(--nfd-ai-chat-font-size-base);
 			line-height: 1.6;
-			margin-bottom: 1rem;
+			margin-bottom: 0.75rem;
 		}
 
 		strong {
@@ -147,23 +219,24 @@
 		}
 
 		code {
-			background-color: var(--nfd-ai-chat-color-border);
-			padding: 0.2em 0.4em;
-			border-radius: 3px;
-			font-family: "Courier New", Courier, monospace;
-			font-size: 0.9em;
+			background-color: rgba(0, 0, 0, 0.05);
+			padding: 0.15em 0.4em;
+			border-radius: 4px;
+			font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+			font-size: 0.88em;
+			color: var(--nfd-ai-chat-color-text);
 		}
 
 		code.inline-code {
-			background-color: rgba(0, 0, 0, 0.06);
+			background-color: rgba(0, 0, 0, 0.05);
 			color: var(--nfd-ai-chat-color-text);
 			font-weight: 500;
 		}
 
 		ul,
 		ol {
-			margin: 1rem 0;
-			padding-left: 1.5rem;
+			margin: 0.5rem 0 0.75rem;
+			padding-left: 1.25rem;
 		}
 
 		ul {
@@ -175,34 +248,104 @@
 		}
 
 		li {
-			margin-bottom: 0.5rem;
-			line-height: 1.5;
+			margin-bottom: 0.25rem;
+			line-height: 1.55;
+		}
+
+		li:last-child {
+			margin-bottom: 0;
 		}
 
 		blockquote {
-			margin: 1.5rem 0;
-			padding: 1rem 1.5rem;
-			background-color: var(--nfd-ai-chat-color-background);
-			border-left: 4px solid var(--nfd-ai-chat-color-primary);
-			font-style: italic;
-			line-height: 1.6;
+			margin: 0.75rem 0;
+			padding: 0.5rem 0.875rem;
+			background-color: transparent;
+			border-left: 3px solid var(--nfd-ai-chat-color-primary);
+			font-style: normal;
+			color: var(--nfd-ai-chat-color-text-secondary);
+			line-height: 1.55;
 		}
 
 		pre {
-			background-color: var(--nfd-ai-chat-color-background);
-			padding: 1rem;
-			border-radius: 4px;
+			position: relative; // Anchor for the injected copy button.
+			background-color: #f6f8fa;
+			padding: 12px 14px;
+			border-radius: 8px;
 			overflow-x: auto;
-			margin: 1rem 0;
-			font-family: "Courier New", Courier, monospace;
-			font-size: 0.9em;
-			line-height: 1.4;
+			margin: 0.75rem 0;
+			font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+			font-size: 0.85em;
+			line-height: 1.5;
+			border: 1px solid rgba(0, 0, 0, 0.05);
 		}
 
 		pre code {
 			background: none;
 			padding: 0;
 			border-radius: 0;
+			font-size: inherit;
+		}
+
+		// Code-block copy button injected by attachCodeBlockCopy(). Hidden until the
+		// block is hovered/focused-within so it doesn't compete with the code itself.
+		.nfd-ai-chat-codeblock-copy {
+			position: absolute;
+			top: 6px;
+			right: 6px;
+			display: inline-flex;
+			align-items: center;
+			gap: 4px;
+			padding: 4px 8px;
+			border: 1px solid rgba(0, 0, 0, 0.08);
+			background: rgba(255, 255, 255, 0.92);
+			color: var(--nfd-ai-chat-color-text-secondary, #6b7280);
+			border-radius: 6px;
+			font-size: 11px;
+			font-weight: 500;
+			line-height: 1;
+			cursor: pointer;
+			opacity: 0;
+			transform: translateY(-1px);
+			transition:
+				opacity 0.12s ease,
+				transform 0.12s ease,
+				color 0.12s ease,
+				background-color 0.12s ease,
+				border-color 0.12s ease;
+			backdrop-filter: blur(2px);
+			-webkit-backdrop-filter: blur(2px);
+
+			&:hover,
+			&:focus-visible {
+				color: var(--nfd-ai-chat-color-text, #111827);
+				background: #fff;
+				border-color: rgba(0, 0, 0, 0.14);
+			}
+
+			&:focus-visible {
+				outline: 2px solid var(--nfd-ai-chat-color-primary, #0075fa);
+				outline-offset: 1px;
+			}
+
+			&.is-copied {
+				color: var(--nfd-ai-chat-color-success, #00a32a);
+				border-color: var(--nfd-ai-chat-color-success, #00a32a);
+			}
+		}
+
+		// Reveal on pre hover/focus-within. Touch devices keep it visible (no hover state).
+		pre:hover .nfd-ai-chat-codeblock-copy,
+		pre:focus-within .nfd-ai-chat-codeblock-copy {
+			opacity: 1;
+			transform: translateY(0);
+		}
+
+		@media (hover: none) {
+
+			.nfd-ai-chat-codeblock-copy {
+				opacity: 1;
+				transform: none;
+			}
 		}
 
 		hr {
@@ -213,26 +356,83 @@
 
 	}
 
+	// Assistant — no bubble. Small purple sparkles mark on the left, content/tools stacked on the right.
 	&--assistant {
-		flex-direction: column;
+		flex-direction: row;
 		justify-content: flex-start;
+		align-items: flex-start;
+		gap: 10px;
+		position: relative;
+
+		// Subtle grey hover surface (drawn via pseudo-element to avoid any layout shift).
+		&::before {
+			content: "";
+			position: absolute;
+			inset: -4px -10px;
+			background: rgba(17, 24, 39, 0.03);
+			border-radius: 8px;
+			opacity: 0;
+			transition: opacity 0.15s ease;
+			pointer-events: none;
+			z-index: 0;
+		}
+
+		&:hover::before,
+		&:focus-within::before {
+			opacity: 1;
+		}
+
+		// Keep content above the hover surface.
+		.nfd-ai-chat-message__avatar,
+		.nfd-ai-chat-message__main {
+			position: relative;
+			z-index: 1;
+		}
+
+		.nfd-ai-chat-message__avatar {
+			flex-shrink: 0;
+			display: flex;
+			align-items: center;
+			justify-content: center;
+			width: 18px;
+			height: 18px;
+			margin-top: 2px; // visually align with the first text line cap-height
+			color: var(--nfd-ai-chat-color-text);
+			transition: opacity 0.18s ease;
+
+			svg {
+				display: block;
+			}
+		}
+
+		.nfd-ai-chat-message__main {
+			flex: 1 1 auto;
+			min-width: 0;
+			display: flex;
+			flex-direction: column;
+			gap: 6px;
+		}
+
+		.nfd-ai-chat-message__bubble-wrap {
+			align-self: stretch;
+			max-width: 100%;
+		}
 
 		.nfd-ai-chat-message__content {
 			flex: 1;
-			width: 100%;
-			min-width: 0; // Allow flex item to shrink so long text wraps
-			max-width: 85%;
+			width: auto;
+			min-width: 0;
+			max-width: 100%;
 			line-height: 1.6;
 			color: var(--nfd-ai-chat-color-text);
-			background: var(--nfd-ai-chat-color-background);
-			padding: var(--nfd-ai-chat-spacing-md) var(--nfd-ai-chat-spacing-lg);
-			border-radius: var(--nfd-ai-chat-radius-lg);
-			border: 1px solid var(--nfd-ai-chat-color-border);
-			box-shadow: var(--nfd-ai-chat-shadow-sm);
+			background: transparent;
+			padding: 0;
+			border-radius: 0;
+			border: none;
+			box-shadow: none;
 			white-space: pre-wrap;
 			overflow-wrap: break-word;
 			word-break: break-word;
-			overflow: hidden; // Prevent content from overflowing dialog
 
 			&--rich {
 				white-space: normal;
@@ -245,28 +445,337 @@
 					margin-bottom: 0;
 				}
 			}
-
-			@media (max-width: 480px) {
-				max-width: 95%;
-			}
 		}
 	}
 
 	&--user {
 		justify-content: flex-end;
 
+		.nfd-ai-chat-message__bubble-wrap {
+			align-self: flex-end;
+			max-width: 78%;
+		}
+
 		.nfd-ai-chat-message__content {
-			background: var(--nfd-ai-chat-color-primary, var(--nfd-ai-chat-color-background));
-			padding: 10px 16px;
-			border-radius: var(--nfd-ai-chat-radius-lg);
+			// Hug the bubble's own content width even when a sibling (status row, action bar)
+			// is wider — otherwise the bubble-wrap (inline-flex column) stretches the bubble
+			// to match the widest child (e.g. "Couldn't send Retry" makes a short bubble blocky).
+			align-self: flex-end;
+			// Soft diagonal gradient (primary → hover) + ambient colored shadow + inset top-edge highlight.
+			// The ambient shadow uses an alpha-derived primary token so it follows the brand palette.
+			background:
+				linear-gradient(135deg, var(--nfd-ai-chat-color-primary) 0%, var(--nfd-ai-chat-color-primary-hover, var(--nfd-ai-chat-color-primary)) 100%);
+			padding: 10px 14px;
+			border-radius: 14px 14px 4px 14px;
 			line-height: 1.5;
+			// Slightly heavier weight + tiny positive tracking rebalances light text on saturated bg.
+			font-weight: 450;
+			letter-spacing: 0.005em;
 			color: var(--nfd-ai-chat-color-white, var(--nfd-ai-chat-color-text-secondary));
-			max-width: 70%;
+			max-width: 100%;
 			white-space: pre-wrap;
 			position: relative;
 			overflow-wrap: break-word;
-			box-shadow: var(--nfd-ai-chat-shadow-sm);
-			transition: transform 0.15s ease, box-shadow 0.15s ease;
+			box-shadow:
+				0 4px 16px -4px var(--nfd-ai-chat-color-primary-light-20, rgba(0, 0, 0, 0.12)),
+				inset 0 1px 0 rgba(255, 255, 255, 0.16);
+			transition:
+				transform 0.18s ease,
+				box-shadow 0.18s ease;
+
+			&::selection,
+			& *::selection {
+				background: rgba(255, 255, 255, 0.3);
+				color: var(--nfd-ai-chat-color-white, #fff);
+			}
 		}
+
+		// Tactile lift on hover/focus-within. -1px is enough to feel responsive without looking jumpy.
+		&:hover .nfd-ai-chat-message__content,
+		&:focus-within .nfd-ai-chat-message__content {
+			transform: translateY(-1px);
+			box-shadow:
+				0 8px 22px -6px var(--nfd-ai-chat-color-primary-light-20, rgba(0, 0, 0, 0.16)),
+				inset 0 1px 0 rgba(255, 255, 255, 0.2);
+		}
+
+		// Action bar mirrored to the right edge to match the bubble's alignment.
+		.nfd-ai-chat-message-actions {
+			justify-content: flex-end;
+		}
+	}
+
+	// Consecutive user turns read as one thought sequence: tighten the joining corners.
+	// First in a pair keeps default (already has bottom-right 4); following one tightens its top-right.
+	&--user + &--user .nfd-ai-chat-message__content {
+		border-top-right-radius: 4px;
+	}
+}
+
+// Wrapper that hugs the bubble width and provides a positioning context for the action bar.
+.nfd-ai-chat-message__bubble-wrap {
+	position: relative;
+	display: inline-flex;
+	flex-direction: column;
+	min-width: 0;
+}
+
+// --- Sender-grouping rhythm -------------------------------------------------
+// Within a same-sender run: tight (use the container's small `gap`).
+// On a sender change: add breathing room so turns read as distinct exchanges.
+.nfd-ai-chat-message--user + .nfd-ai-chat-message--assistant,
+.nfd-ai-chat-message--assistant + .nfd-ai-chat-message--user {
+	margin-top: 14px;
+}
+
+// Consecutive assistant turns: hide the avatar (run reads as one voice) but add a
+// little breathing room so the messages still register as distinct paragraphs/replies
+// instead of running into each other. Less than a sender-change gap (14px), more than
+// the container's tight default (4px).
+.nfd-ai-chat-message--assistant + .nfd-ai-chat-message--assistant {
+	margin-top: 10px;
+
+	.nfd-ai-chat-message__avatar {
+		// `visibility: hidden` keeps the layout slot reserved so text stays aligned
+		// with the first assistant turn in the run.
+		visibility: hidden;
+	}
+}
+
+// Exception: fallback / system notices always show the avatar so the row reads as a
+// distinct delivery (e.g. "we couldn't connect"), not a continuation of a prior AI turn.
+.nfd-ai-chat-message--assistant + .nfd-ai-chat-message--assistant.nfd-ai-chat-message--fallback .nfd-ai-chat-message__avatar {
+	visibility: visible;
+}
+
+@keyframes nfd-ai-chat-message-in {
+
+	from {
+		opacity: 0;
+		transform: translateY(4px);
+	}
+
+	to {
+		opacity: 1;
+		transform: translateY(0);
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+
+	.nfd-ai-chat-message {
+		animation: none;
+	}
+}
+
+/* -------------------------------------------------------------------------- */
+/*                       Streaming caret (typewriter effect)                  */
+/* -------------------------------------------------------------------------- */
+
+// Caret rendered as a real glyph via ::after. Using a unicode block character means it
+// inherits the surrounding text's font metrics — no inline-block sizing, no vertical-align
+// tweaks, no risk of growing the line box. Just a colored character that blinks.
+.nfd-ai-chat-message__content--streaming::after {
+	content: "▍";
+	margin-left: 1px;
+	color: var(--nfd-ai-chat-color-primary);
+	font-weight: 400;
+	animation: nfd-ai-chat-cursor-blink 0.85s step-end infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+
+	.nfd-ai-chat-message__cursor {
+		animation: none;
+	}
+}
+
+/* -------------------------------------------------------------------------- */
+/*                Message action bar (copy, etc.) — assistant only            */
+/* -------------------------------------------------------------------------- */
+
+// Collapses to 0 height when not hovered so it doesn't reserve permanent space below the message.
+// On bubble hover, expands smoothly. With no bubble, no left indent is needed.
+.nfd-ai-chat-message-actions {
+	display: flex;
+	align-items: center;
+	gap: 0;
+	margin: 0 0 0 -2px;
+	padding: 0;
+	max-height: 0;
+	overflow: hidden;
+	opacity: 0;
+	transition: max-height 0.18s ease, opacity 0.18s ease, margin-top 0.18s ease;
+	pointer-events: none;
+}
+
+// Quiet on bubble hover; lifts to full strength only on direct hover/focus of the bar.
+.nfd-ai-chat-message:hover .nfd-ai-chat-message-actions,
+.nfd-ai-chat-message:focus-within .nfd-ai-chat-message-actions {
+	max-height: 20px;
+	margin-top: 2px;
+	opacity: 0.5;
+	pointer-events: auto;
+}
+
+.nfd-ai-chat-message:hover .nfd-ai-chat-message-actions:hover,
+.nfd-ai-chat-message:focus-within .nfd-ai-chat-message-actions:focus-within {
+	opacity: 1;
+}
+
+// Touch devices have no hover; show quietly so the action bar is reachable.
+@media (hover: none) {
+
+	.nfd-ai-chat-message-actions {
+		max-height: 20px;
+		margin-top: 2px;
+		opacity: 0.5;
+		pointer-events: auto;
+	}
+}
+
+.nfd-ai-chat-message-actions__btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 18px;
+	height: 18px;
+	padding: 0;
+	border: none;
+	background: transparent;
+	color: var(--nfd-ai-chat-color-grey-medium);
+	border-radius: 3px;
+	cursor: pointer;
+	transition: color 0.12s ease;
+
+	&:hover:not(:disabled) {
+		color: var(--nfd-ai-chat-color-text-secondary);
+	}
+
+	&:focus-visible {
+		outline: none;
+		color: var(--nfd-ai-chat-color-text-secondary);
+		box-shadow: 0 0 0 1.5px var(--nfd-ai-chat-color-primary-light-16);
+	}
+
+	&:disabled {
+		opacity: 0.4;
+		cursor: not-allowed;
+	}
+
+	&.is-active {
+		color: var(--nfd-ai-chat-color-success);
+	}
+
+	svg {
+		display: block;
+		width: 11px;
+		height: 11px;
+	}
+}
+
+// Direct hover/focus on the action bar raises it to full strength (selector specificity must
+// match the parent-hover rule above so this win the cascade when both apply).
+.nfd-ai-chat-message:hover .nfd-ai-chat-message-actions:hover,
+.nfd-ai-chat-message:focus-within .nfd-ai-chat-message-actions:focus-within {
+	opacity: 1;
+}
+
+/* -------------------------------------------------------------------------- */
+/*                       Date group divider ("Today", etc.)                   */
+/* -------------------------------------------------------------------------- */
+
+.nfd-ai-chat-message-divider {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	margin: 12px 0 14px;
+	min-height: 22px;
+	position: relative;
+	gap: 0;
+
+	&:first-child {
+		margin-top: 0; // The container's padding-top already gives breathing room above the first divider.
+	}
+
+	&::before,
+	&::after {
+		content: "";
+		flex: 1;
+		height: 1px;
+		background: var(--nfd-ai-chat-color-border);
+		opacity: 0.7;
+	}
+
+	&__label {
+		font-size: 11px;
+		font-weight: 500;
+		text-transform: uppercase;
+		letter-spacing: 0.04em;
+		color: var(--nfd-ai-chat-color-grey-medium);
+		padding: 0 10px;
+		white-space: nowrap;
+	}
+}
+
+/* -------------------------------------------------------------------------- */
+/*                  Failed-message state (user side, per-message)             */
+/* -------------------------------------------------------------------------- */
+
+// When a user message couldn't be delivered, the bubble keeps its identity (so the
+// user still sees what they sent) but acquires a soft red ring + a status row beneath
+// pointing them to the Retry affordance. The full-bleed gradient stays — we don't
+// flip the bubble red, because that would overstate a transient connectivity blip.
+.nfd-ai-chat-message__content--failed {
+	box-shadow:
+		0 0 0 1.5px var(--nfd-ai-chat-color-error, #d63638),
+		0 4px 16px -4px var(--nfd-ai-chat-color-error-alpha-15, rgba(214, 54, 56, 0.15));
+}
+
+.nfd-ai-chat-message:hover .nfd-ai-chat-message__content--failed,
+.nfd-ai-chat-message:focus-within .nfd-ai-chat-message__content--failed {
+	box-shadow:
+		0 0 0 1.5px var(--nfd-ai-chat-color-error, #d63638),
+		0 8px 22px -6px var(--nfd-ai-chat-color-error-alpha-15, rgba(214, 54, 56, 0.18));
+}
+
+.nfd-ai-chat-message__status {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	margin-top: 6px;
+	font-size: 11px;
+	font-weight: 500;
+	line-height: 1.2;
+}
+
+// Right-align the status row under user bubbles so it follows the bubble edge.
+.nfd-ai-chat-message--user .nfd-ai-chat-message__status {
+	justify-content: flex-end;
+}
+
+.nfd-ai-chat-message__status--failed {
+	color: var(--nfd-ai-chat-color-error, #d63638);
+}
+
+.nfd-ai-chat-message__status-action {
+	background: none;
+	border: none;
+	padding: 0;
+	margin: 0;
+	font: inherit;
+	color: inherit;
+	text-decoration: underline;
+	text-underline-offset: 2px;
+	cursor: pointer;
+	border-radius: 2px;
+
+	&:hover {
+		text-decoration-thickness: 2px;
+	}
+
+	&:focus-visible {
+		outline: 2px solid currentcolor;
+		outline-offset: 2px;
 	}
 }

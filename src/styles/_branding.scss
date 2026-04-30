@@ -17,7 +17,7 @@
 .nfd-brand-bluehost,
 [data-brand="bluehost"] {
 
-	/* Enhanced message bubbles for professional look */
+	/* User bubble: brand primary, flat — assistant uses the bubble-less style from _messages.scss */
 	.nfd-ai-chat-message {
 
 		&--user {
@@ -25,15 +25,8 @@
 			.nfd-ai-chat-message__content {
 				background: var(--nfd-ai-chat-color-primary);
 				color: var(--nfd-ai-chat-color-white);
-				font-weight: 500;
-				box-shadow: var(--nfd-ai-chat-shadow-sm);
-			}
-		}
-
-		&--assistant {
-
-			.nfd-ai-chat-message__content {
-				color: var(--nfd-ai-chat-color-text);
+				font-weight: 400;
+				box-shadow: none;
 			}
 		}
 	}
@@ -42,21 +35,10 @@
 	.nfd-ai-chat-input {
 		background: var(--nfd-ai-chat-color-white);
 		border-top: 1px solid var(--nfd-ai-chat-color-border);
-		box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.04);
+		box-shadow: none;
 
 		.nfd-ai-chat-input__textarea:focus {
 			outline: none;
-		}
-
-		.components-button.nfd-ai-chat-input__submit:hover:not(:disabled) {
-			background: var(--nfd-ai-chat-color-primary-hover);
-			transform: translateY(-1px);
-			box-shadow: var(--nfd-ai-chat-shadow-md);
-		}
-
-		.components-button.nfd-ai-chat-input__submit:active:not(:disabled) {
-			background: var(--nfd-ai-chat-color-primary-active);
-			transform: translateY(0);
 		}
 	}
 
