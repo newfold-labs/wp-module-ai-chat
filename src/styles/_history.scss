@@ -280,6 +280,26 @@
 	font-weight: 500;
 	color: var(--nfd-ai-chat-color-text-secondary, #6b7280);
 	white-space: nowrap;
+	transition: opacity 0.12s ease;
+}
+
+// On row hover/focus the absolutely-positioned delete button takes the same
+// top-right slot as the timestamp — fade the timestamp out so they don't
+// stack visually. Opacity (not display) keeps the layout slot stable so
+// nothing shifts when delete reveals.
+.nfd-ai-chat-history-item:hover .nfd-ai-chat-history-item__time,
+.nfd-ai-chat-history-item:focus-within .nfd-ai-chat-history-item__time {
+	opacity: 0;
+}
+
+// Touch devices have no hover and the delete button is always-visible — hide
+// the timestamp here too so the two never overlap. Trade-off: no relative time
+// on touch, which mirrors how most chat-history mobile UIs behave anyway.
+@media (hover: none) {
+
+	.nfd-ai-chat-history-item__time {
+		opacity: 0;
+	}
 }
 
 .nfd-ai-chat-history-item__preview {
