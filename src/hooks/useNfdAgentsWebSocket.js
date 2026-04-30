@@ -16,7 +16,10 @@ import {
 	WS_CLOSE_AUTH_FAILED,
 	WS_CLOSE_MISSING_TOKEN,
 } from "../constants/nfdAgents/websocket";
-import { getJwtExpirationMs } from "../utils/nfdAgents/jwtUtils";
+import {
+	getJwtExpirationMs,
+	shouldBypassJwtExpiryChecksForLocalTesting,
+} from "../utils/nfdAgents/jwtUtils";
 import {
 	getSiteId,
 	setSiteId,
@@ -221,22 +224,25 @@ const useNfdAgentsWebSocket = ({
 			}
 
 			// Pre-connect: if JWT is already expired or within buffer, refetch config once
-			let refetchedForExpiry = false;
-			while (config?.jarvis_jwt) {
-				const expMs = getJwtExpirationMs(config.jarvis_jwt);
-				if (expMs == null) break;
-				if (expMs >= Date.now() + JWT_EXPIRED_BUFFER_MS) break;
-				if (refetchedForExpiry) {
-					throw new Error(
-						__("Token expired, please refresh the page.", "wp-module-ai-chat")
-					);
-				}
-				configRef.current = null;
-				configRef.current = await fetchAgentConfig({ configEndpoint, consumer });
-				config = configRef.current;
-				refetchedForExpiry = true;
-				if (!config) {
-					throw new Error(__("No configuration available", "wp-module-ai-chat"));
+			const bypassJwtLocal = shouldBypassJwtExpiryChecksForLocalTesting();
+			if (!bypassJwtLocal) {
+				let refetchedForExpiry = false;
+				while (config?.jarvis_jwt) {
+					const expMs = getJwtExpirationMs(config.jarvis_jwt);
+					if (expMs == null) break;
+					if (expMs >= Date.now() + JWT_EXPIRED_BUFFER_MS) break;
+					if (refetchedForExpiry) {
+						throw new Error(
+							__("Token expired, please refresh the page.", "wp-module-ai-chat")
+						);
+					}
+					configRef.current = null;
+					configRef.current = await fetchAgentConfig({ configEndpoint, consumer });
+					config = configRef.current;
+					refetchedForExpiry = true;
+					if (!config) {
+						throw new Error(__("No configuration available", "wp-module-ai-chat"));
+					}
 				}
 			}
 
@@ -255,7 +261,7 @@ const useNfdAgentsWebSocket = ({
 			}
 
 			// Schedule proactive JWT refresh only for jarvis_jwt (exclude huapi_token / debug path)
-			if (config.jarvis_jwt) {
+			if (config.jarvis_jwt && !bypassJwtLocal) {
 				if (jwtRefreshTimeoutRef.current) {
 					clearTimeout(jwtRefreshTimeoutRef.current);
 					jwtRefreshTimeoutRef.current = null;
@@ -324,10 +330,8 @@ const useNfdAgentsWebSocket = ({
 				isStoppedRef,
 				hasUserMessageRef,
 				typingTimeoutRef,
-				typingTimeout: TYPING_TIMEOUT,
 				setIsTyping,
 				setStatus,
-				setCurrentResponse,
 				setMessages,
 				setConversationId,
 				setError,
@@ -362,20 +366,23 @@ const useNfdAgentsWebSocket = ({
 				}
 
 				// Auth failure (4000/4001) or client-side detected token expiry: clear config so next connect fetches fresh JWT (throttled by cooldown)
-				const isAuthClose = event.code === WS_CLOSE_AUTH_FAILED || event.code === WS_CLOSE_MISSING_TOKEN;
-				const jwt = configRef.current?.jarvis_jwt;
-				const expMs = jwt ? getJwtExpirationMs(jwt) : null;
-				const tokenExpired =
-					expMs != null && expMs < Date.now() + JWT_EXPIRED_BUFFER_MS;
-				if (isAuthClose || tokenExpired) {
-					const now = Date.now();
-					const outsideAuthCooldown =
-						lastAuthRefreshAt.current == null ||
-						now - lastAuthRefreshAt.current >= AUTH_REFRESH_COOLDOWN_MS;
-					if (outsideAuthCooldown) {
-						configRef.current = null;
-						reconnectAttempts.current = 0;
-						lastAuthRefreshAt.current = now;
+				if (!shouldBypassJwtExpiryChecksForLocalTesting()) {
+					const isAuthClose =
+						event.code === WS_CLOSE_AUTH_FAILED || event.code === WS_CLOSE_MISSING_TOKEN;
+					const jwt = configRef.current?.jarvis_jwt;
+					const expMs = jwt ? getJwtExpirationMs(jwt) : null;
+					const tokenExpired =
+						expMs != null && expMs < Date.now() + JWT_EXPIRED_BUFFER_MS;
+					if (isAuthClose || tokenExpired) {
+						const now = Date.now();
+						const outsideAuthCooldown =
+							lastAuthRefreshAt.current == null ||
+							now - lastAuthRefreshAt.current >= AUTH_REFRESH_COOLDOWN_MS;
+						if (outsideAuthCooldown) {
+							configRef.current = null;
+							reconnectAttempts.current = 0;
+							lastAuthRefreshAt.current = now;
+						}
 					}
 				}
 
@@ -465,7 +472,12 @@ const useNfdAgentsWebSocket = ({
 	}, []);
 
 	// ---------------------------------------------------------------------------
-	// On transition to "failed", append assistant fallback message so user sees error state
+	// On transition to "failed", append assistant fallback message so user sees error state.
+	// Guard: only inject the fallback when the user has actually engaged (sent a message).
+	// Otherwise a connection that fails on initial mount would surface "Sorry, I don't have
+	// any information on this yet." even though the user hasn't asked anything — confusing
+	// and looks like a hallucination. Pre-engagement failures stay silent here; the welcome
+	// screen / connection state UI handles surfacing the issue.
 	// ---------------------------------------------------------------------------
 	useEffect(() => {
 		if (connectionState !== "failed" || prevConnectionStateRef.current === "failed") {
@@ -473,6 +485,23 @@ const useNfdAgentsWebSocket = ({
 			return;
 		}
 		prevConnectionStateRef.current = connectionState;
+
+		const currentMessages = messagesRef.current || [];
+		const hasAnyUserMessage = currentMessages.some(
+			(m) => (m.role === "user" || m.type === "user") && m.content && String(m.content).trim()
+		);
+		if (!hasAnyUserMessage) {
+			// Still clean up transient state, but skip appending the fallback message.
+			setError(null);
+			setCurrentResponse("");
+			setIsTyping(false);
+			setStatus(null);
+			if (typingTimeoutRef.current) {
+				clearTimeout(typingTimeoutRef.current);
+				typingTimeoutRef.current = null;
+			}
+			return;
+		}
 
 		const defaultFallback = __(
 			"Sorry, we couldn't connect. Please try again later or contact support.",
@@ -493,6 +522,11 @@ const useNfdAgentsWebSocket = ({
 					type: "assistant",
 					content: fallbackContent,
 					timestamp: new Date(),
+					// isFallback distinguishes a connection-failure notice from a real AI reply.
+					// The UI uses this to keep the avatar visible (the consecutive-assistant
+					// rule otherwise hides it) so the message reads as a system delivery,
+					// not a continuation of the previous AI turn.
+					isFallback: true,
 				},
 			];
 		});
@@ -521,13 +555,20 @@ const useNfdAgentsWebSocket = ({
 				(reconnectAttempts.current >= MAX_RECONNECT_ATTEMPTS &&
 					(!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN));
 			if (isFailed && !convId) {
+				const userMsgId = `msg-${Date.now()}`;
+				const fallbackId = `${userMsgId}-fallback`;
 				const userMessage = {
-					id: `msg-${Date.now()}`,
+					id: userMsgId,
 					role: "user",
 					type: "user",
 					content: message,
 					timestamp: new Date(),
 					sessionId: sessionIdRef.current,
+					// status: "failed" lets the UI render a per-message error treatment + Retry
+					// affordance. fallbackId points to the assistant fallback so the retry handler
+					// can remove both atomically before re-attempting.
+					status: "failed",
+					fallbackMessageId: fallbackId,
 				};
 				const fallbackContent =
 					typeof getConnectionFailedFallbackMessage === "function"
@@ -540,11 +581,15 @@ const useNfdAgentsWebSocket = ({
 					...prev,
 					userMessage,
 					{
-						id: `msg-${Date.now()}-fallback`,
+						id: fallbackId,
 						role: "assistant",
 						type: "assistant",
 						content: fallbackContent,
 						timestamp: new Date(),
+						// See note on isFallback in the connection-state transition effect:
+						// keeps the avatar visible so a system notice doesn't visually
+						// merge with a previous assistant turn.
+						isFallback: true,
 					},
 				]);
 				setError(null);
@@ -611,6 +656,37 @@ const useNfdAgentsWebSocket = ({
 			MAX_RECONNECT_ATTEMPTS,
 			TYPING_TIMEOUT,
 		]
+	);
+
+	// ---------------------------------------------------------------------------
+	// retryFailedMessage(messageId) — Re-attempts a previously failed user send.
+	// Strategy: remove the failed user message AND its paired assistant fallback (so the
+	// thread doesn't accrete duplicates), then call sendMessage with the original content.
+	// If the connection is still down, the new send will hit the same failed branch and
+	// re-append a fresh failed pair; if recovery has happened, it sends normally.
+	// ---------------------------------------------------------------------------
+	const retryFailedMessage = useCallback(
+		(messageId) => {
+			if (!messageId) {
+				return;
+			}
+			// Resolve the failed message via a ref so the lookup is side-effect-free —
+			// the setMessages updater stays a pure function (safe under React strict mode).
+			const target = (messagesRef.current || []).find((m) => m.id === messageId);
+			if (!target || target.status !== "failed") {
+				return;
+			}
+			const contentToResend = target.content || "";
+			const fallbackId = target.fallbackMessageId || null;
+			setMessages((prev) =>
+				prev.filter((m) => m.id !== messageId && m.id !== fallbackId)
+			);
+			if (contentToResend) {
+				// Defer so the state removal is committed before sendMessage appends the new pair.
+				setTimeout(() => sendMessage(contentToResend), 0);
+			}
+		},
+		[sendMessage]
 	);
 
 	// ---------------------------------------------------------------------------
@@ -943,6 +1019,7 @@ const useNfdAgentsWebSocket = ({
 		loadConversation,
 		getSessionId,
 		sendMessage,
+		retryFailedMessage,
 		sendSystemMessage,
 		isConnected,
 		isConnecting,
