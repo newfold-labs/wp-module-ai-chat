@@ -128,3 +128,64 @@ export function getLatestMessageTime(conversation) {
 	});
 	return latest ? new Date(latest) : null;
 }
+
+/**
+ * Get a short preview snippet from the most recent assistant message in the conversation.
+ * Strips markdown noise and trims to a single-line excerpt suitable for a list item.
+ *
+ * @param {Object} conversation - Conversation with messages array
+ * @param {number} [maxLength=80] - Max preview length before truncation
+ * @return {string} Preview string (may be empty if no assistant content found).
+ */
+export function getConversationPreview(conversation, maxLength = 80) {
+	const messages = conversation.messages || conversation;
+	if (!Array.isArray(messages) || messages.length === 0) {
+		return "";
+	}
+	// Walk from newest to oldest and pick the last assistant message with content.
+	for (let i = messages.length - 1; i >= 0; i -= 1) {
+		const m = messages[i];
+		const isAssistant = m.role === "assistant" || m.type === "assistant";
+		if (!isAssistant || !m.content) {
+			continue;
+		}
+		// Strip common markdown markers and collapse whitespace for a clean single-line preview.
+		const cleaned = String(m.content)
+			.replace(/```[\s\S]*?```/g, " ")
+			.replace(/`([^`]+)`/g, "$1")
+			.replace(/!\[[^\]]*\]\([^)]*\)/g, "")
+			.replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+			.replace(/[*_~>#-]+/g, " ")
+			.replace(/\s+/g, " ")
+			.trim();
+		if (!cleaned) {
+			continue;
+		}
+		return cleaned.length > maxLength ? cleaned.slice(0, maxLength).trimEnd() + "…" : cleaned;
+	}
+	return "";
+}
+
+/**
+ * Bucket key for date-based grouping ("today" | "yesterday" | "earlier").
+ *
+ * @param {Date} date - Reference date for the conversation
+ * @param {Date} [now=new Date()] - Current time (override for tests)
+ * @return {"today"|"yesterday"|"earlier"} Bucket key.
+ */
+export function getRecencyBucket(date, now = new Date()) {
+	if (!date) {
+		return "earlier";
+	}
+	const d = date instanceof Date ? date : new Date(date);
+	const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+	const startOfYesterday = startOfToday - 86400000;
+	const t = d.getTime();
+	if (t >= startOfToday) {
+		return "today";
+	}
+	if (t >= startOfYesterday) {
+		return "yesterday";
+	}
+	return "earlier";
+}

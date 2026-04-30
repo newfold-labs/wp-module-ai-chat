@@ -6,17 +6,28 @@
  * Use consumer that matches useNfdAgentsWebSocket for the same consumer.
  */
 
-import { useState, useEffect, useCallback } from "@wordpress/element";
+import { Fragment, useState, useEffect, useCallback, useMemo } from "@wordpress/element";
 import { __ } from "@wordpress/i18n";
-import { History, Trash2 } from "lucide-react";
+import { Trash2 } from "lucide-react";
+import { SparklesOutlineIcon } from "../icons";
 import { getChatHistoryStorageKeys } from "../../constants/nfdAgents/storageKeys";
 import {
 	hasMeaningfulUserMessage,
 	extractConversations,
 	getLatestMessageTime,
+	getConversationPreview,
+	getRecencyBucket,
 } from "../../utils/nfdAgents/chatHistoryList";
 
 const DEFAULT_MAX_HISTORY_ITEMS = 3;
+
+const BUCKET_LABELS = {
+	today: () => __("Today", "wp-module-ai-chat"),
+	yesterday: () => __("Yesterday", "wp-module-ai-chat"),
+	earlier: () => __("Earlier", "wp-module-ai-chat"),
+};
+
+const BUCKET_ORDER = ["today", "yesterday", "earlier"];
 
 /**
  * Human-readable relative time (e.g. 2m, 2h, 2d). Uses i18n for "Just now".
@@ -57,8 +68,8 @@ const getConversationTitle = (conversation) => {
 	const firstUserMessage = messages.find((msg) => msg.role === "user" || msg.type === "user");
 
 	if (firstUserMessage && firstUserMessage.content) {
-		const content = firstUserMessage.content;
-		return content.length > 50 ? content.substring(0, 50) + "..." : content;
+		const content = String(firstUserMessage.content).trim();
+		return content.length > 60 ? content.substring(0, 60) + "…" : content;
 	}
 
 	return __("Previous conversation", "wp-module-ai-chat");
@@ -190,53 +201,95 @@ const ChatHistoryList = ({
 		[disabled, keys]
 	);
 
+	// Compute decorated items + bucket grouping in a single pass so render stays simple.
+	const groupedConversations = useMemo(() => {
+		const decorated = conversations.map((conversation, index) => {
+			const timeDate = conversation.archivedAt || getLatestMessageTime(conversation) || null;
+			return {
+				conversation,
+				index,
+				title: getConversationTitle(conversation),
+				preview: getConversationPreview(conversation),
+				timeDate,
+				timeLabel: timeDate ? getRelativeTime(timeDate) : null,
+				bucket: getRecencyBucket(timeDate),
+			};
+		});
+		const groups = { today: [], yesterday: [], earlier: [] };
+		decorated.forEach((item) => groups[item.bucket].push(item));
+		return BUCKET_ORDER.filter((bucket) => groups[bucket].length > 0).map((bucket) => ({
+			bucket,
+			label: BUCKET_LABELS[bucket](),
+			items: groups[bucket],
+		}));
+	}, [conversations]);
+
 	if (conversations.length === 0) {
-		if (emptyMessage) {
-			return (
-				<div className="nfd-ai-chat-history-list nfd-ai-chat-history-list--empty">
-					{emptyMessage}
+		const message = emptyMessage || __("No conversations yet.", "wp-module-ai-chat");
+		return (
+			<div
+				className="nfd-ai-chat-history-list nfd-ai-chat-history-list--empty"
+				role="status"
+				aria-live="polite"
+			>
+				<div className="nfd-ai-chat-history-empty">
+					<div className="nfd-ai-chat-history-empty__icon" aria-hidden="true">
+						<SparklesOutlineIcon width={20} height={20} />
+					</div>
+					<div className="nfd-ai-chat-history-empty__title">{message}</div>
+					<div className="nfd-ai-chat-history-empty__hint">
+						{__("Your recent chats will appear here.", "wp-module-ai-chat")}
+					</div>
 				</div>
-			);
-		}
-		return null;
+			</div>
+		);
 	}
 
 	return (
 		<div className="nfd-ai-chat-history-list">
-			{conversations.map((conversation, index) => {
-				const title = getConversationTitle(conversation);
-				const key = conversation.sessionId || `legacy-${index}`;
-				const timeDate = conversation.archivedAt || getLatestMessageTime(conversation) || null;
-				const timeLabel = timeDate ? getRelativeTime(timeDate) : null;
-				return (
-					<div
-						key={key}
-						className={`nfd-ai-chat-history-item${disabled ? " nfd-ai-chat-history-item--disabled" : ""}`}
-						role="button"
-						tabIndex={disabled ? -1 : 0}
-						aria-disabled={disabled}
-						onClick={() => handleHistoryClick(conversation)}
-						onKeyDown={(e) => {
-							if (disabled) {
-								return;
-							}
-							if (e.key === "Enter" || e.key === " ") {
-								e.preventDefault();
-								handleHistoryClick(conversation);
-							}
-						}}
-					>
-						<History width={14} height={14} aria-hidden />
-						<div className="nfd-ai-chat-history-item__content">
-							<span className="nfd-ai-chat-history-item__title">{title}</span>
-							<div className="nfd-ai-chat-history-item__meta">
-								{timeLabel && <span className="nfd-ai-chat-history-item__time">{timeLabel}</span>}
+			{groupedConversations.map((group) => (
+				<Fragment key={group.bucket}>
+					<div className="nfd-ai-chat-history-list__section-label">{group.label}</div>
+					{group.items.map((item) => {
+						const { conversation, index, title, preview, timeLabel } = item;
+						const key = conversation.sessionId || `legacy-${index}`;
+						return (
+							<div
+								key={key}
+								className={`nfd-ai-chat-history-item${disabled ? " nfd-ai-chat-history-item--disabled" : ""}`}
+								role="button"
+								tabIndex={disabled ? -1 : 0}
+								aria-disabled={disabled}
+								aria-label={title}
+								onClick={() => handleHistoryClick(conversation)}
+								onKeyDown={(e) => {
+									if (disabled) {
+										return;
+									}
+									if (e.key === "Enter" || e.key === " ") {
+										e.preventDefault();
+										handleHistoryClick(conversation);
+									}
+								}}
+							>
+								<div className="nfd-ai-chat-history-item__body">
+									<div className="nfd-ai-chat-history-item__title-row">
+										<span className="nfd-ai-chat-history-item__title">{title}</span>
+										{timeLabel && (
+											<span className="nfd-ai-chat-history-item__time">{timeLabel}</span>
+										)}
+									</div>
+									{preview && (
+										<div className="nfd-ai-chat-history-item__preview">{preview}</div>
+									)}
+								</div>
 								<button
 									type="button"
 									className="nfd-ai-chat-history-item__delete"
 									onClick={(e) => handleDelete(e, index)}
 									aria-label={__("Delete conversation", "wp-module-ai-chat")}
 									title={__("Delete", "wp-module-ai-chat")}
+									tabIndex={disabled ? -1 : 0}
 								>
 									<Trash2
 										width={14}
@@ -246,10 +299,10 @@ const ChatHistoryList = ({
 									/>
 								</button>
 							</div>
-						</div>
-					</div>
-				);
-			})}
+						);
+					})}
+				</Fragment>
+			))}
 		</div>
 	);
 };
