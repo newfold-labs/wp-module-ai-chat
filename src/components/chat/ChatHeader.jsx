@@ -2,6 +2,7 @@
  * WordPress dependencies
  */
 import { __ } from "@wordpress/i18n";
+import { Icon, plus } from "@wordpress/icons";
 
 /**
  * Internal dependencies
@@ -13,7 +14,7 @@ import HeaderBar from "../ui/HeaderBar";
 /**
  * ChatHeader Component
  *
- * Header for the chat panel: white background; left = outline sparkles icon + title + BETA pill.
+ * Header for the chat panel: white background; left = gradient sparkles tile + title + BETA pill.
  * New chat (+) and Close (×) on the right. Built on shared HeaderBar layout.
  *
  * @param {Object}                    props                   - Component props.
@@ -40,20 +41,23 @@ const ChatHeader = ({ title, onNewChat, onClose, extraActions, newChatDisabled =
 						aria-label={__("New chat", "wp-module-ai-chat")}
 						title={__("New chat", "wp-module-ai-chat")}
 					>
-						+
+						<Icon icon={plus} size={20} />
 					</button>
 				)}
 				{extraActions}
 				{typeof onClose === "function" && (
-					<button
-						type="button"
-						className="nfd-ai-chat-header__btn nfd-ai-chat-header__btn--close"
-						onClick={onClose}
-						aria-label={__("Close", "wp-module-ai-chat")}
-						title={__("Close", "wp-module-ai-chat")}
-					>
-						<CloseIcon />
-					</button>
+					<>
+						<span className="nfd-ai-chat-header__divider" aria-hidden="true" />
+						<button
+							type="button"
+							className="nfd-ai-chat-header__btn nfd-ai-chat-header__btn--close"
+							onClick={onClose}
+							aria-label={__("Close", "wp-module-ai-chat")}
+							title={__("Close", "wp-module-ai-chat")}
+						>
+							<CloseIcon />
+						</button>
+					</>
 				)}
 			</>
 		}
