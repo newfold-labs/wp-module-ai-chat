@@ -16,10 +16,7 @@ import {
 	WS_CLOSE_AUTH_FAILED,
 	WS_CLOSE_MISSING_TOKEN,
 } from "../constants/nfdAgents/websocket";
-import {
-	getJwtExpirationMs,
-	shouldBypassJwtExpiryChecksForLocalTesting,
-} from "../utils/nfdAgents/jwtUtils";
+import { getJwtExpirationMs } from "../utils/nfdAgents/jwtUtils";
 import {
 	getSiteId,
 	setSiteId,
@@ -224,25 +221,22 @@ const useNfdAgentsWebSocket = ({
 			}
 
 			// Pre-connect: if JWT is already expired or within buffer, refetch config once
-			const bypassJwtLocal = shouldBypassJwtExpiryChecksForLocalTesting();
-			if (!bypassJwtLocal) {
-				let refetchedForExpiry = false;
-				while (config?.jarvis_jwt) {
-					const expMs = getJwtExpirationMs(config.jarvis_jwt);
-					if (expMs == null) break;
-					if (expMs >= Date.now() + JWT_EXPIRED_BUFFER_MS) break;
-					if (refetchedForExpiry) {
-						throw new Error(
-							__("Token expired, please refresh the page.", "wp-module-ai-chat")
-						);
-					}
-					configRef.current = null;
-					configRef.current = await fetchAgentConfig({ configEndpoint, consumer });
-					config = configRef.current;
-					refetchedForExpiry = true;
-					if (!config) {
-						throw new Error(__("No configuration available", "wp-module-ai-chat"));
-					}
+			let refetchedForExpiry = false;
+			while (config?.jarvis_jwt) {
+				const expMs = getJwtExpirationMs(config.jarvis_jwt);
+				if (expMs == null) break;
+				if (expMs >= Date.now() + JWT_EXPIRED_BUFFER_MS) break;
+				if (refetchedForExpiry) {
+					throw new Error(
+						__("Token expired, please refresh the page.", "wp-module-ai-chat")
+					);
+				}
+				configRef.current = null;
+				configRef.current = await fetchAgentConfig({ configEndpoint, consumer });
+				config = configRef.current;
+				refetchedForExpiry = true;
+				if (!config) {
+					throw new Error(__("No configuration available", "wp-module-ai-chat"));
 				}
 			}
 
@@ -261,7 +255,7 @@ const useNfdAgentsWebSocket = ({
 			}
 
 			// Schedule proactive JWT refresh only for jarvis_jwt (exclude huapi_token / debug path)
-			if (config.jarvis_jwt && !bypassJwtLocal) {
+			if (config.jarvis_jwt) {
 				if (jwtRefreshTimeoutRef.current) {
 					clearTimeout(jwtRefreshTimeoutRef.current);
 					jwtRefreshTimeoutRef.current = null;
@@ -366,23 +360,21 @@ const useNfdAgentsWebSocket = ({
 				}
 
 				// Auth failure (4000/4001) or client-side detected token expiry: clear config so next connect fetches fresh JWT (throttled by cooldown)
-				if (!shouldBypassJwtExpiryChecksForLocalTesting()) {
-					const isAuthClose =
-						event.code === WS_CLOSE_AUTH_FAILED || event.code === WS_CLOSE_MISSING_TOKEN;
-					const jwt = configRef.current?.jarvis_jwt;
-					const expMs = jwt ? getJwtExpirationMs(jwt) : null;
-					const tokenExpired =
-						expMs != null && expMs < Date.now() + JWT_EXPIRED_BUFFER_MS;
-					if (isAuthClose || tokenExpired) {
-						const now = Date.now();
-						const outsideAuthCooldown =
-							lastAuthRefreshAt.current == null ||
-							now - lastAuthRefreshAt.current >= AUTH_REFRESH_COOLDOWN_MS;
-						if (outsideAuthCooldown) {
-							configRef.current = null;
-							reconnectAttempts.current = 0;
-							lastAuthRefreshAt.current = now;
-						}
+				const isAuthClose =
+					event.code === WS_CLOSE_AUTH_FAILED || event.code === WS_CLOSE_MISSING_TOKEN;
+				const jwt = configRef.current?.jarvis_jwt;
+				const expMs = jwt ? getJwtExpirationMs(jwt) : null;
+				const tokenExpired =
+					expMs != null && expMs < Date.now() + JWT_EXPIRED_BUFFER_MS;
+				if (isAuthClose || tokenExpired) {
+					const now = Date.now();
+					const outsideAuthCooldown =
+						lastAuthRefreshAt.current == null ||
+						now - lastAuthRefreshAt.current >= AUTH_REFRESH_COOLDOWN_MS;
+					if (outsideAuthCooldown) {
+						configRef.current = null;
+						reconnectAttempts.current = 0;
+						lastAuthRefreshAt.current = now;
 					}
 				}
 
