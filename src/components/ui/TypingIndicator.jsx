@@ -9,6 +9,7 @@ import { TYPING_STATUS } from "../../constants/nfdAgents/typingStatus";
  * Internal dependencies
  */
 import { getToolDetails } from "../../utils/nfdAgents/typingIndicatorToolDisplay";
+import AssistantMessageShell from "./AssistantMessageShell";
 
 /**
  * External dependencies
@@ -18,7 +19,7 @@ import classnames from "classnames";
 
 /** Status key → user-facing label for the simple typing state (single place for copy; i18n-ready). */
 const STATUS_LABELS = {
-	[TYPING_STATUS.PROCESSING]: __("Processing…", "wp-module-ai-chat"),
+	[TYPING_STATUS.PROCESSING]: __("Thinking…", "wp-module-ai-chat"),
 	[TYPING_STATUS.CONNECTING]: __("Getting your site ready…", "wp-module-ai-chat"),
 	[TYPING_STATUS.WS_CONNECTING]: __("Connecting…", "wp-module-ai-chat"),
 	[TYPING_STATUS.TOOL_CALL]: __("Looking this up…", "wp-module-ai-chat"),
@@ -26,8 +27,43 @@ const STATUS_LABELS = {
 	[TYPING_STATUS.RECEIVED]: __("Message received", "wp-module-ai-chat"),
 	[TYPING_STATUS.GENERATING]: __("Thinking…", "wp-module-ai-chat"),
 	[TYPING_STATUS.SUMMARIZING]: __("Summarizing results", "wp-module-ai-chat"),
-	[TYPING_STATUS.COMPLETED]: __("Processing", "wp-module-ai-chat"),
+	[TYPING_STATUS.COMPLETED]: __("Wrapping up…", "wp-module-ai-chat"),
 	[TYPING_STATUS.FAILED]: __("Error occurred", "wp-module-ai-chat"),
+};
+
+/**
+ * Phased copy for the generic "still working" state — shown only when status is PROCESSING
+ * (the common fallback emitted on typing_start) so users get a sense of progression instead of
+ * a frozen "Processing…" the entire time.
+ */
+const PROCESSING_PHASES = [
+	{ at: 0, label: __("Thinking…", "wp-module-ai-chat") },
+	{ at: 3500, label: __("Working on it…", "wp-module-ai-chat") },
+	{ at: 9000, label: __("Still working…", "wp-module-ai-chat") },
+	{ at: 18000, label: __("Almost there…", "wp-module-ai-chat") },
+];
+
+/**
+ * Returns the current phased label, advancing through PROCESSING_PHASES while `active` is true.
+ * Resets when active flips to false or when the status key changes (passed as `resetKey`).
+ *
+ * @param {boolean} active   - When true, advance through phases on a timer.
+ * @param {string}  resetKey - When this changes, restart the phase timeline.
+ * @return {string} The currently-displayed phase label.
+ */
+const usePhasedProcessingLabel = (active, resetKey) => {
+	const [phaseIndex, setPhaseIndex] = useState(0);
+	useEffect(() => {
+		setPhaseIndex(0);
+		if (!active) {
+			return undefined;
+		}
+		const timers = PROCESSING_PHASES.slice(1).map((phase, i) =>
+			setTimeout(() => setPhaseIndex(i + 1), phase.at)
+		);
+		return () => timers.forEach(clearTimeout);
+	}, [active, resetKey]);
+	return PROCESSING_PHASES[phaseIndex].label;
 };
 
 /**
@@ -131,7 +167,14 @@ const TypingIndicator = ({
 		}
 	}, [isExecuting, isBetweenBatches]);
 
+	// Use phased copy when status is the generic PROCESSING fallback (or unset).
+	const isGenericProcessing = !status || status === TYPING_STATUS.PROCESSING;
+	const phasedLabel = usePhasedProcessingLabel(isGenericProcessing, status ?? "");
+
 	const getStatusText = () => {
+		if (isGenericProcessing) {
+			return phasedLabel;
+		}
 		return STATUS_LABELS[status] ?? __("Thinking…", "wp-module-ai-chat");
 	};
 
@@ -174,13 +217,12 @@ const TypingIndicator = ({
 
 	if (hasToolActivity) {
 		return (
-			<div className="nfd-ai-chat-message nfd-ai-chat-message--assistant">
-				<div className="nfd-ai-chat-message__content">
-					<div
-						className={classnames("nfd-ai-chat-tool-execution", {
-							"nfd-ai-chat-tool-execution--collapsed": !isExpanded,
-						})}
-					>
+			<AssistantMessageShell>
+				<div
+					className={classnames("nfd-ai-chat-tool-execution", {
+						"nfd-ai-chat-tool-execution--collapsed": !isExpanded,
+					})}
+				>
 						<button
 							type="button"
 							className="nfd-ai-chat-tool-execution__header"
@@ -244,24 +286,16 @@ const TypingIndicator = ({
 							</div>
 						)}
 					</div>
-				</div>
-			</div>
+			</AssistantMessageShell>
 		);
 	}
 
 	return (
-		<div className="nfd-ai-chat-message nfd-ai-chat-message--assistant">
-			<div className="nfd-ai-chat-message__content">
-				<div className="nfd-ai-chat-typing-indicator">
-					<span className="nfd-ai-chat-typing-indicator__dots" aria-hidden="true">
-						<span></span>
-						<span></span>
-						<span></span>
-					</span>
-					<span className="nfd-ai-chat-typing-indicator__text">{getStatusText()}</span>
-				</div>
+		<AssistantMessageShell>
+			<div className="nfd-ai-chat-typing-indicator">
+				<span className="nfd-ai-chat-typing-indicator__text">{getStatusText()}</span>
 			</div>
-		</div>
+		</AssistantMessageShell>
 	);
 };
 
