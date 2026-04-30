@@ -19,13 +19,13 @@ import classnames from "classnames";
 
 /** Status key → user-facing label for the simple typing state (single place for copy; i18n-ready). */
 const STATUS_LABELS = {
-	[TYPING_STATUS.PROCESSING]: __("Thinking…", "wp-module-ai-chat"),
+	[TYPING_STATUS.PROCESSING]: __("One moment…", "wp-module-ai-chat"),
 	[TYPING_STATUS.CONNECTING]: __("Getting your site ready…", "wp-module-ai-chat"),
 	[TYPING_STATUS.WS_CONNECTING]: __("Connecting…", "wp-module-ai-chat"),
 	[TYPING_STATUS.TOOL_CALL]: __("Looking this up…", "wp-module-ai-chat"),
 	[TYPING_STATUS.WORKING]: __("Almost there…", "wp-module-ai-chat"),
 	[TYPING_STATUS.RECEIVED]: __("Message received", "wp-module-ai-chat"),
-	[TYPING_STATUS.GENERATING]: __("Thinking…", "wp-module-ai-chat"),
+	[TYPING_STATUS.GENERATING]: __("One moment…", "wp-module-ai-chat"),
 	[TYPING_STATUS.SUMMARIZING]: __("Summarizing results", "wp-module-ai-chat"),
 	[TYPING_STATUS.COMPLETED]: __("Wrapping up…", "wp-module-ai-chat"),
 	[TYPING_STATUS.FAILED]: __("Error occurred", "wp-module-ai-chat"),
@@ -37,10 +37,10 @@ const STATUS_LABELS = {
  * a frozen "Processing…" the entire time.
  */
 const PROCESSING_PHASES = [
-	{ at: 0, label: __("Thinking…", "wp-module-ai-chat") },
+	{ at: 0, label: __("One moment…", "wp-module-ai-chat") },
 	{ at: 3500, label: __("Working on it…", "wp-module-ai-chat") },
-	{ at: 9000, label: __("Still working…", "wp-module-ai-chat") },
-	{ at: 18000, label: __("Almost there…", "wp-module-ai-chat") },
+	{ at: 9000, label: __("Almost there…", "wp-module-ai-chat") },
+	{ at: 18000, label: __("Just a moment longer…", "wp-module-ai-chat") },
 ];
 
 /**
@@ -175,7 +175,7 @@ const TypingIndicator = ({
 		if (isGenericProcessing) {
 			return phasedLabel;
 		}
-		return STATUS_LABELS[status] ?? __("Thinking…", "wp-module-ai-chat");
+		return STATUS_LABELS[status] ?? __("One moment…", "wp-module-ai-chat");
 	};
 
 	// Show expandable tool list when any tools are active, done, or queued.
