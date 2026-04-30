@@ -149,10 +149,18 @@ export function getConversationPreview(conversation, maxLength = 80) {
 		if (!isAssistant || !m.content) {
 			continue;
 		}
-		// Strip common markdown markers and collapse whitespace for a clean single-line preview.
+		// Strip HTML tags + common entities first (assistant fallbacks render as HTML),
+		// then markdown markers, then collapse whitespace for a clean single-line preview.
 		const cleaned = String(m.content)
 			.replace(/```[\s\S]*?```/g, " ")
 			.replace(/`([^`]+)`/g, "$1")
+			.replace(/<[^>]+>/g, " ")
+			.replace(/&nbsp;/g, " ")
+			.replace(/&amp;/g, "&")
+			.replace(/&lt;/g, "<")
+			.replace(/&gt;/g, ">")
+			.replace(/&quot;/g, "\"")
+			.replace(/&#39;|&apos;/g, "'")
 			.replace(/!\[[^\]]*\]\([^)]*\)/g, "")
 			.replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
 			.replace(/[*_~>#-]+/g, " ")

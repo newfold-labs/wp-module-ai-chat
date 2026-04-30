@@ -294,16 +294,19 @@
 	-webkit-box-orient: vertical;
 }
 
-/* Delete: hidden by default, fades in on row hover/focus. Kept reachable by   */
-/* keyboard via :focus-within so tabbing into it still works.                  */
+/* Delete: hidden by default, fades in on row hover/focus. Absolutely positioned so   */
+/* it doesn't reserve a 24px slot in flow — the title/preview can use the full row    */
+/* width when the button isn't visible. Solid bg on hover so the underlying text      */
+/* (timestamp) reads cleanly behind it. Keyboard-reachable via :focus-within.         */
 .nfd-ai-chat-history-item__delete {
-	flex-shrink: 0;
+	position: absolute;
+	top: 6px;
+	right: 6px;
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
 	width: 24px;
 	height: 24px;
-	margin-top: -2px;
 	padding: 0;
 	border: none;
 	background: transparent;
