@@ -32,6 +32,8 @@ const JWT_PROACTIVE_REFRESH_DEFER_MS = 30 * 1000;
 export const NFD_AGENTS_WEBSOCKET = {
 	MAX_RECONNECT_ATTEMPTS: 5,
 	RECONNECT_DELAY: 1000, // Base delay between reconnect attempts (ms)
+	MAX_RECONNECT_DELAY: 30000, // Cap exponential backoff so high attempt counts don't push waits into minutes (ms)
+	RECONNECT_JITTER_RATIO: 0.2, // Apply ±20% jitter to backoff so multiple tabs don't reconnect in lockstep
 	TYPING_TIMEOUT: 60000, // Hide typing indicator if no response within this time (ms)
 	WS_CLOSE_AUTH_FAILED,
 	WS_CLOSE_MISSING_TOKEN,

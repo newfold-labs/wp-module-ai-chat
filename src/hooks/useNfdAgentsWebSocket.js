@@ -6,7 +6,7 @@
  * Delegates to: messageHandler, configFetcher, storage, url.
  */
 
-/* global WebSocket localStorage sessionStorage */
+/* global WebSocket localStorage sessionStorage navigator */
 /* eslint-disable no-console -- Connection and storage warnings only. */
 
 import { useState, useEffect, useRef, useCallback } from "@wordpress/element";
@@ -105,6 +105,9 @@ const useNfdAgentsWebSocket = ({
 		return "disconnected";
 	});
 	const [retryAttempt, setRetryAttempt] = useState(0);
+	// Wall-clock ms when the next scheduled reconnect will fire — lets the UI render a countdown
+	// instead of just an attempt counter. Null when no reconnect is pending.
+	const [nextRetryAt, setNextRetryAt] = useState(null);
 
 	// ---------------------------------------------------------------------------
 	// Refs — wsRef: current WebSocket. reconnectTimeoutRef/Attempts: backoff. configRef: cached config.
@@ -145,6 +148,8 @@ const useNfdAgentsWebSocket = ({
 
 	const MAX_RECONNECT_ATTEMPTS = NFD_AGENTS_WEBSOCKET.MAX_RECONNECT_ATTEMPTS;
 	const RECONNECT_DELAY = NFD_AGENTS_WEBSOCKET.RECONNECT_DELAY;
+	const MAX_RECONNECT_DELAY = NFD_AGENTS_WEBSOCKET.MAX_RECONNECT_DELAY;
+	const RECONNECT_JITTER_RATIO = NFD_AGENTS_WEBSOCKET.RECONNECT_JITTER_RATIO;
 	const TYPING_TIMEOUT = NFD_AGENTS_WEBSOCKET.TYPING_TIMEOUT;
 	const JWT_REFRESH_BUFFER_MS = NFD_AGENTS_WEBSOCKET.JWT_REFRESH_BUFFER_MS;
 	const JWT_REFRESH_MIN_DELAY_MS = NFD_AGENTS_WEBSOCKET.JWT_REFRESH_MIN_DELAY_MS;
@@ -312,6 +317,7 @@ const useNfdAgentsWebSocket = ({
 				setIsConnecting(false);
 				setConnectionState("connected");
 				setRetryAttempt(0);
+				setNextRetryAt(null);
 				setError(null);
 				reconnectAttempts.current = 0;
 				hasUserMessageRef.current = messagesRef.current && messagesRef.current.length > 0;
@@ -378,16 +384,34 @@ const useNfdAgentsWebSocket = ({
 					}
 				}
 
-				// Exponential backoff: reconnect only if not normal close and under max attempts
-				if (event.code !== 1000 && reconnectAttempts.current < MAX_RECONNECT_ATTEMPTS) {
+				// Exponential backoff with cap + jitter: reconnect only if not normal close and under max attempts.
+				// Skip auto-reconnect while the device is offline — the online listener will trigger a
+				// reconnect immediately when the network returns, so burning attempts here is wasted.
+				const isOffline =
+					typeof navigator !== "undefined" && navigator && navigator.onLine === false;
+				if (
+					event.code !== 1000 &&
+					!isOffline &&
+					reconnectAttempts.current < MAX_RECONNECT_ATTEMPTS
+				) {
 					reconnectAttempts.current++;
 					setRetryAttempt(reconnectAttempts.current);
 					setConnectionState("reconnecting");
-					const delay = RECONNECT_DELAY * Math.pow(2, reconnectAttempts.current - 1);
+					const baseDelay = Math.min(
+						MAX_RECONNECT_DELAY,
+						RECONNECT_DELAY * Math.pow(2, reconnectAttempts.current - 1)
+					);
+					const jitter =
+						baseDelay * RECONNECT_JITTER_RATIO * (Math.random() * 2 - 1);
+					const delay = Math.max(0, Math.round(baseDelay + jitter));
+					setNextRetryAt(Date.now() + delay);
 					reconnectTimeoutRef.current = setTimeout(() => {
+						setNextRetryAt(null);
+						reconnectTimeoutRef.current = null;
 						connect();
 					}, delay);
 				} else if (reconnectAttempts.current >= MAX_RECONNECT_ATTEMPTS) {
+					setNextRetryAt(null);
 					setConnectionState("failed");
 					try {
 						sessionStorage.setItem(`${keyPrefix}-connection-failed`, "1");
@@ -395,6 +419,7 @@ const useNfdAgentsWebSocket = ({
 						// ignore
 					}
 				} else {
+					setNextRetryAt(null);
 					setConnectionState("disconnected");
 				}
 			};
@@ -406,6 +431,7 @@ const useNfdAgentsWebSocket = ({
 				console.warn("[AI Chat] Connection failed:", connectError?.message || connectError);
 			}
 			setIsConnecting(false);
+			setNextRetryAt(null);
 			setConnectionState("failed");
 			try {
 				sessionStorage.setItem(`${keyPrefix}-connection-failed`, "1");
@@ -422,6 +448,8 @@ const useNfdAgentsWebSocket = ({
 		saveConversationId,
 		MAX_RECONNECT_ATTEMPTS,
 		RECONNECT_DELAY,
+		MAX_RECONNECT_DELAY,
+		RECONNECT_JITTER_RATIO,
 		TYPING_TIMEOUT,
 		JWT_REFRESH_BUFFER_MS,
 		JWT_REFRESH_MIN_DELAY_MS,
@@ -462,6 +490,96 @@ const useNfdAgentsWebSocket = ({
 			}
 		};
 	}, []);
+
+	// ---------------------------------------------------------------------------
+	// Network + visibility recovery — Watch the device's online state and the document's
+	// visibility. When the network comes back or the user returns to the tab, eagerly try
+	// to reconnect rather than waiting out the exponential backoff (which can be tens of
+	// seconds at high attempt counts) or sitting permanently in "failed" once we've exhausted
+	// the retry budget. Only acts when autoConnect is true, so consumers that explicitly
+	// manage connection lifecycle aren't surprised by background reconnects.
+	//
+	// Loop guards: connect() is idempotent (returns early on OPEN/CONNECTING/connectingRef),
+	// the offline branch only cancels timers (it does not actively close the socket), and the
+	// visibility branch only acts when the socket is provably gone.
+	// ---------------------------------------------------------------------------
+	useEffect(() => {
+		if (!autoConnect) {
+			return undefined;
+		}
+		if (typeof window === "undefined") {
+			return undefined;
+		}
+
+		const isSocketDead = () =>
+			!wsRef.current ||
+			(wsRef.current.readyState !== WebSocket.OPEN &&
+				wsRef.current.readyState !== WebSocket.CONNECTING);
+
+		const tryReconnect = () => {
+			if (connectingRef.current) {
+				return;
+			}
+			if (!isSocketDead()) {
+				return;
+			}
+			// Cancel any pending backoff so we attempt immediately rather than waiting.
+			if (reconnectTimeoutRef.current) {
+				clearTimeout(reconnectTimeoutRef.current);
+				reconnectTimeoutRef.current = null;
+			}
+			reconnectAttempts.current = 0;
+			setRetryAttempt(0);
+			setNextRetryAt(null);
+			if (connectRef.current) {
+				connectRef.current();
+			}
+		};
+
+		const handleOnline = () => {
+			tryReconnect();
+		};
+
+		const handleOffline = () => {
+			// Stop scheduled reconnects while we know the network is down — they'll burn
+			// retry budget and leave the user in "failed" by the time the network returns.
+			// The browser will close the socket on its own; we don't force-close here so we
+			// don't race with onclose's reconnect bookkeeping.
+			if (reconnectTimeoutRef.current) {
+				clearTimeout(reconnectTimeoutRef.current);
+				reconnectTimeoutRef.current = null;
+			}
+			setNextRetryAt(null);
+		};
+
+		const handleVisibilityChange = () => {
+			if (typeof document === "undefined") {
+				return;
+			}
+			if (document.visibilityState !== "visible") {
+				return;
+			}
+			// Only act if the network looks healthy — avoids attempting while offline.
+			if (typeof navigator !== "undefined" && navigator.onLine === false) {
+				return;
+			}
+			tryReconnect();
+		};
+
+		window.addEventListener("online", handleOnline);
+		window.addEventListener("offline", handleOffline);
+		if (typeof document !== "undefined") {
+			document.addEventListener("visibilitychange", handleVisibilityChange);
+		}
+
+		return () => {
+			window.removeEventListener("online", handleOnline);
+			window.removeEventListener("offline", handleOffline);
+			if (typeof document !== "undefined") {
+				document.removeEventListener("visibilitychange", handleVisibilityChange);
+			}
+		};
+	}, [autoConnect]);
 
 	// ---------------------------------------------------------------------------
 	// On transition to "failed", append assistant fallback message so user sees error state.
@@ -718,6 +836,9 @@ const useNfdAgentsWebSocket = ({
 
 	// ---------------------------------------------------------------------------
 	// disconnect() — Close WebSocket, clear reconnect and typing timeouts, set state to disconnected.
+	// Also zero the reconnect-attempt counter so a subsequent reconnect starts from a clean slate
+	// rather than carrying forward retries from a previous lifecycle (which would shorten the
+	// effective retry budget and surface "failed" sooner than expected).
 	// ---------------------------------------------------------------------------
 	const disconnect = useCallback(() => {
 		if (reconnectTimeoutRef.current) {
@@ -736,6 +857,9 @@ const useNfdAgentsWebSocket = ({
 			wsRef.current.close(1000, "User disconnected");
 			wsRef.current = null;
 		}
+		reconnectAttempts.current = 0;
+		setRetryAttempt(0);
+		setNextRetryAt(null);
 		setIsConnected(false);
 		setIsConnecting(false);
 		setConnectionState("disconnected");
@@ -1033,6 +1157,9 @@ const useNfdAgentsWebSocket = ({
 		connectionState,
 		retryAttempt,
 		maxRetries: MAX_RECONNECT_ATTEMPTS,
+		// Wall-clock ms timestamp of the next scheduled reconnect attempt. Null when no
+		// reconnect is pending. Consumers can render a countdown by subtracting Date.now().
+		nextRetryAt,
 		manualRetry,
 	};
 };
