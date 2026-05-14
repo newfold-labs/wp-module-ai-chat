@@ -14,24 +14,7 @@ import classnames from "classnames";
  * Internal dependencies
  */
 import { getToolDetails } from "../../utils/nfdAgents/typingIndicatorToolDisplay";
-
-/**
- * Group consecutive tools with the same name into batched entries.
- * E.g., 6 generate-image calls become one entry with count=6.
- */
-const groupTools = (tools) => {
-	const groups = [];
-	for (const tool of tools) {
-		const last = groups[groups.length - 1];
-		if (last && last.name === tool.name) {
-			last.count += 1;
-			if (tool.isError) last.isError = true;
-		} else {
-			groups.push({ ...tool, count: 1 });
-		}
-	}
-	return groups;
-};
+import { groupConsecutiveTools } from "../../utils/nfdAgents/groupTools";
 
 /**
  * Safely convert a value to a string for display
@@ -199,9 +182,9 @@ const ToolExecutionItem = ({ tool, isError, result }) => {
 				)}
 				<span className="nfd-ai-chat-tool-execution__item-title">
 					{details.title}
-					{tool.count > 1 && ` (${tool.count})`}
+					{tool.total > 1 && ` (${tool.total})`}
 				</span>
-				{!(tool.count > 1) && details.params && (
+				{!(tool.total > 1) && details.params && (
 					<span className="nfd-ai-chat-tool-execution__item-params">{details.params}</span>
 				)}
 			</div>
@@ -228,7 +211,7 @@ const ToolExecutionList = ({ executedTools = [], toolResults = [] }) => {
 		return null;
 	}
 
-	const grouped = groupTools(executedTools);
+	const grouped = groupConsecutiveTools({ executed: executedTools });
 
 	// Create a map of results by tool ID for quick lookup
 	const resultsMap = new Map();
@@ -240,7 +223,7 @@ const ToolExecutionList = ({ executedTools = [], toolResults = [] }) => {
 		});
 	}
 
-	const hasErrors = executedTools.some((tool) => tool.isError);
+	const hasErrors = grouped.some((group) => group.hasError);
 	const totalTools = grouped.length;
 
 	return (
@@ -274,8 +257,8 @@ const ToolExecutionList = ({ executedTools = [], toolResults = [] }) => {
 						<ToolExecutionItem
 							key={tool.id || `tool-${index}`}
 							tool={tool}
-							isError={tool.isError}
-							result={resultsMap.get(tool.id)}
+							isError={tool.hasError}
+							result={tool.total === 1 ? resultsMap.get(tool.id) : null}
 						/>
 					))}
 				</div>

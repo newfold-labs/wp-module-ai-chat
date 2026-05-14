@@ -9,6 +9,7 @@ import { TYPING_STATUS } from "../../constants/nfdAgents/typingStatus";
  * Internal dependencies
  */
 import { getToolDetails } from "../../utils/nfdAgents/typingIndicatorToolDisplay";
+import { groupConsecutiveTools } from "../../utils/nfdAgents/groupTools";
 import AssistantMessageShell from "./AssistantMessageShell";
 
 /**
@@ -16,40 +17,6 @@ import AssistantMessageShell from "./AssistantMessageShell";
  */
 import { Loader2, CheckCircle, XCircle, Sparkles, ChevronDown, ChevronRight } from "lucide-react";
 import classnames from "classnames";
-
-/**
- * Merge executed, active, and pending tools into unified progress groups.
- * Consecutive same-name tools are batched: "Generating Images (3/6)".
- */
-const buildProgressGroups = (executed, active, pending) => {
-	const groups = [];
-	const map = new Map();
-
-	const add = (tool, status) => {
-		if (!map.has(tool.name)) {
-			const g = { ...tool, completed: 0, total: 0, activeCount: 0, pendingCount: 0, hasError: false, count: 0 };
-			map.set(tool.name, g);
-			groups.push(g);
-		}
-		const g = map.get(tool.name);
-		g.total++;
-		g.count++;
-		if (status === "completed") {
-			g.completed++;
-			if (tool.isError) g.hasError = true;
-		} else if (status === "active") {
-			g.activeCount++;
-		} else {
-			g.pendingCount++;
-		}
-	};
-
-	executed.forEach((t) => add(t, "completed"));
-	if (active) add(active, "active");
-	pending.forEach((t) => add(t, "pending"));
-
-	return groups;
-};
 
 /** Status key → user-facing label for the simple typing state (single place for copy; i18n-ready). */
 const STATUS_LABELS = {
@@ -159,12 +126,12 @@ const ToolExecutionItem = ({ tool, isActive, progress, isComplete, isError }) =>
 				{getIcon()}
 				<span className="nfd-ai-chat-tool-execution__item-title">
 					{details.title}
-					{tool.total > 1 && (tool.completed < tool.total
-						? ` (${tool.completed}/${tool.total})`
-						: ` (${tool.total})`
-					)}
+					{tool.total > 1 &&
+						(tool.completed < tool.total
+							? ` (${tool.completed}/${tool.total})`
+							: ` (${tool.total})`)}
 				</span>
-				{!(tool.count > 1) && details.params && (
+				{!(tool.total > 1) && details.params && (
 					<span className="nfd-ai-chat-tool-execution__item-params">{details.params}</span>
 				)}
 			</div>
@@ -263,47 +230,51 @@ const TypingIndicator = ({
 						"nfd-ai-chat-tool-execution--collapsed": !isExpanded,
 					})}
 				>
-						<button
-							type="button"
-							className="nfd-ai-chat-tool-execution__header"
-							onClick={() => setIsExpanded(!isExpanded)}
-							aria-expanded={isExpanded ? "true" : "false"}
-						>
-							{isExpanded ? (
-								<ChevronDown className="nfd-ai-chat-tool-execution__chevron" size={12} />
-							) : (
-								<ChevronRight className="nfd-ai-chat-tool-execution__chevron" size={12} />
-							)}
-
-							{renderHeaderLabel()}
-						</button>
-
-						{isExpanded && (
-							<div className="nfd-ai-chat-tool-execution__list">
-								{buildProgressGroups(executedTools, activeToolCall, pendingTools).map((group, index) => (
-									<ToolExecutionItem
-										key={group.id || `group-${index}`}
-										tool={group}
-										isActive={group.activeCount > 0}
-										isComplete={group.completed === group.total && group.total > 0}
-										isError={group.hasError}
-										progress={group.activeCount > 0 ? toolProgress : null}
-									/>
-								))}
-
-								{isBetweenBatches && (
-									<ToolExecutionItem
-										key="preparing"
-										tool={{ name: "preparing-changes" }}
-										isActive={true}
-										isComplete={false}
-										isError={false}
-										progress={null}
-									/>
-								)}
-							</div>
+					<button
+						type="button"
+						className="nfd-ai-chat-tool-execution__header"
+						onClick={() => setIsExpanded(!isExpanded)}
+						aria-expanded={isExpanded ? "true" : "false"}
+					>
+						{isExpanded ? (
+							<ChevronDown className="nfd-ai-chat-tool-execution__chevron" size={12} />
+						) : (
+							<ChevronRight className="nfd-ai-chat-tool-execution__chevron" size={12} />
 						)}
-					</div>
+
+						{renderHeaderLabel()}
+					</button>
+
+					{isExpanded && (
+						<div className="nfd-ai-chat-tool-execution__list">
+							{groupConsecutiveTools({
+								executed: executedTools,
+								active: activeToolCall,
+								pending: pendingTools,
+							}).map((group, index) => (
+								<ToolExecutionItem
+									key={group.id || `group-${index}`}
+									tool={group}
+									isActive={group.activeCount > 0}
+									isComplete={group.completed === group.total && group.total > 0}
+									isError={group.hasError}
+									progress={group.activeCount > 0 ? toolProgress : null}
+								/>
+							))}
+
+							{isBetweenBatches && (
+								<ToolExecutionItem
+									key="preparing"
+									tool={{ name: "preparing-changes" }}
+									isActive={true}
+									isComplete={false}
+									isError={false}
+									progress={null}
+								/>
+							)}
+						</div>
+					)}
+				</div>
 			</AssistantMessageShell>
 		);
 	}
