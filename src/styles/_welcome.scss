@@ -7,6 +7,20 @@
 	padding: var(--nfd-ai-chat-spacing-xl) var(--nfd-ai-chat-spacing-md);
 	flex: 1;
 	background: var(--nfd-ai-chat-color-white);
+	animation: nfd-ai-chat-welcome-in 0.45s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes nfd-ai-chat-welcome-in {
+
+	from {
+		opacity: 0;
+		transform: translateY(8px);
+	}
+
+	to {
+		opacity: 1;
+		transform: translateY(0);
+	}
 }
 
 .nfd-ai-chat-welcome__content {
@@ -17,17 +31,58 @@
 }
 
 .nfd-ai-chat-welcome__avatar {
+	position: relative;
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	margin-bottom: 24px;
+	margin-bottom: 20px;
+	isolation: isolate;
+	// Drives the sparkles stroke via the SVG's `currentColor` — brand-primary
+	// resolves to Bluehost blue under .nfd-brand-bluehost (and to whatever future
+	// brands define as their primary).
+	color: var(--nfd-ai-chat-color-primary);
+
+	// Soft brand-tinted glow halo behind the sparkles.
+	&::before {
+		content: "";
+		position: absolute;
+		inset: -28px;
+		background: radial-gradient(
+			circle at center,
+			var(--nfd-ai-chat-color-primary-light-20, rgba(0, 117, 250, 0.2)) 0%,
+			var(--nfd-ai-chat-color-primary-light-8, rgba(0, 117, 250, 0.08)) 35%,
+			transparent 65%
+		);
+		border-radius: 50%;
+		z-index: -1;
+		animation: nfd-ai-chat-welcome-glow 3.6s ease-in-out infinite;
+	}
+
+	svg {
+		display: block;
+	}
 }
 
-/* Purplish gradient logo on welcome — higher specificity to override brand */
-.nfd-ai-chat-welcome .nfd-ai-chat-welcome__avatar .nfd-ai-chat-avatar {
-	background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-	color: #fff;
-	box-shadow: none;
+@keyframes nfd-ai-chat-welcome-glow {
+
+	0%,
+	100% {
+		opacity: 0.7;
+		transform: scale(1);
+	}
+
+	50% {
+		opacity: 1;
+		transform: scale(1.08);
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+
+	.nfd-ai-chat-welcome,
+	.nfd-ai-chat-welcome__avatar::before {
+		animation: none;
+	}
 }
 
 .nfd-ai-chat-welcome__message {
@@ -40,12 +95,14 @@
 	font-size: var(--nfd-ai-chat-font-size-lg);
 	font-weight: 600;
 	color: var(--nfd-ai-chat-color-text);
+	letter-spacing: -0.015em;
 }
 
 .nfd-ai-chat-welcome__subtitle {
 	font-size: var(--nfd-ai-chat-font-size-base);
 	color: var(--nfd-ai-chat-color-text-secondary);
-	line-height: 1.5;
+	line-height: 1.55;
+	max-width: 320px;
 }
 
 .nfd-ai-chat-welcome__cursor {

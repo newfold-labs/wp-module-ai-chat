@@ -84,6 +84,23 @@ export async function fetchAgentConfig({ configEndpoint, consumer }) {
 			parse: true,
 		});
 
+		// Defensive: if the server responded with HTML instead of JSON (e.g. WP returned
+		// a wp-login redirect because the auth cookie expired or a security plugin
+		// intercepted the request), apiFetch may parse it as a string. Surface this as
+		// a distinct, diagnosable error rather than letting a malformed config flow
+		// through and trigger downstream weirdness — including the auth-state churn
+		// that can manifest as "WordPress logged me out".
+		if (typeof config === "string" && /^\s*<(?:!doctype|html|head|body)/i.test(config)) {
+			const htmlAuthErr = new Error(
+				__(
+					"Authentication required. The session may have expired — please refresh the page and sign in again.",
+					"wp-module-ai-chat"
+				)
+			);
+			htmlAuthErr.code = "auth_redirect_html";
+			throw htmlAuthErr;
+		}
+
 		return config;
 	} catch (err) {
 		// eslint-disable-next-line no-console

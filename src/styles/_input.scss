@@ -31,31 +31,64 @@
 	}
 }
 
+// Pill-shaped container. Single border + soft focus ring; no double chrome.
 .nfd-ai-chat-input__container {
 	display: flex;
 	flex-direction: column;
-	gap: 8px;
+	gap: 6px;
 	background: var(--nfd-ai-chat-color-white);
-	border-radius: 12px;
-	padding: 12px;
+	border-radius: 22px;
+	padding: 6px 6px 6px 14px;
 	border: 1px solid var(--nfd-ai-chat-color-border);
-	box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-	transition: all 0.2s ease;
+	box-shadow: none;
+	transition: border-color 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease;
+
+	&:hover {
+		border-color: #d1d5db;
+	}
 
 	&:focus-within {
-		box-shadow: 0 2px 12px rgba(34, 113, 177, 0.25);
+		border-color: var(--nfd-ai-chat-color-primary);
+		box-shadow: 0 0 0 3px var(--nfd-ai-chat-color-primary-light-12);
 	}
 }
 
+// Disabled state (e.g. while WS is reconnecting). Subtle slate fill gives the pill
+// substance without a 1px outline that would visually stack as a second horizontal
+// line under the input-area border-top above. Border goes transparent; the textarea
+// opacity, faded send button, and not-allowed cursor already signal "not interactive".
+.nfd-ai-chat-input--disabled .nfd-ai-chat-input__container {
+	background: var(--nfd-ai-chat-color-background);
+	border-color: transparent;
+	box-shadow: none;
+}
+
+// Optional context strip (e.g. "Selected block") above the input row.
+.nfd-ai-chat-input__context-row {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	min-height: 0;
+}
+
+// Inline input row: textarea grows to fill, send button anchored at the bottom-right.
+.nfd-ai-chat-input__row {
+	display: flex;
+	align-items: flex-end;
+	gap: 6px;
+	min-width: 0;
+}
+
 .nfd-ai-chat-input__textarea {
-	width: 100%;
+	flex: 1 1 auto;
+	min-width: 0;
 	border: none;
 	background: transparent;
 	resize: none;
 	font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen-Sans, Ubuntu, Cantarell, "Helvetica Neue", sans-serif;
 	font-size: var(--nfd-ai-chat-font-size-base);
 	line-height: 1.5;
-	padding: 4px;
+	padding: 6px 0;
 	color: var(--nfd-ai-chat-color-text);
 	min-height: 24px;
 	max-height: 200px;
@@ -80,91 +113,169 @@
 	@include mixins.custom-scrollbar;
 }
 
-.nfd-ai-chat-input__actions {
-	display: flex;
-	justify-content: space-between;
-	align-items: center;
-	gap: 4px;
-	flex-wrap: wrap;
+// Subtle keyboard hint that fades in on focus. Reserves zero height when invisible (max-height collapse).
+.nfd-ai-chat-input__hint {
+	margin-top: 0;
+	max-height: 0;
+	opacity: 0;
+	overflow: hidden;
+	text-align: center;
+	font-size: 11px;
+	color: var(--nfd-ai-chat-color-grey-medium);
+	line-height: 1.4;
+	transition: max-height 0.18s ease, opacity 0.18s ease, margin-top 0.18s ease;
+	pointer-events: none;
+	user-select: none;
 }
 
+.nfd-ai-chat-input__hint--visible {
+	max-height: 18px;
+	opacity: 1;
+	margin-top: 6px;
+}
+
+.nfd-ai-chat-input__hint-key {
+	display: inline-block;
+	padding: 0 4px;
+	border: 1px solid var(--nfd-ai-chat-color-border);
+	border-radius: 3px;
+	background: var(--nfd-ai-chat-color-background);
+	font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+	font-size: 10px;
+	color: var(--nfd-ai-chat-color-text-secondary);
+	line-height: 1.4;
+}
+
+@media (prefers-reduced-motion: reduce) {
+
+	.nfd-ai-chat-input__hint {
+		transition: none;
+	}
+}
+
+// Shared geometry only — no colors here so each button owns its palette.
 .components-button.nfd-ai-chat-input__submit,
 .components-button.nfd-ai-chat-input__stop {
 	flex-shrink: 0;
 	min-width: auto;
-	width: 28px;
-	height: 28px;
+	width: 30px;
+	height: 30px;
 	padding: 0;
-	stroke: var(--nfd-ai-chat-color-grey-dark);
-	background: var(--nfd-ai-chat-color-background);
 	border: none;
 	border-radius: 50%;
 	cursor: pointer;
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	transition: all 0.15s ease;
-	margin-left: auto;
+	align-self: flex-end; // anchor to bottom-right when textarea grows multi-line
+	transition: background-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease, transform 0.1s ease;
 
 	svg {
 		display: block;
 		fill: none;
 		width: 16px;
 		height: 16px;
+		stroke-width: 2.25;
 	}
 }
 
+// Submit: ghost when empty, filled brand-primary when there's text to send.
 .components-button.nfd-ai-chat-input__submit {
+	background: transparent;
+	stroke: var(--nfd-ai-chat-color-grey-medium);
+	color: var(--nfd-ai-chat-color-grey-medium);
 
 	&:disabled {
-		opacity: 0.4;
+		background: transparent;
 		stroke: var(--nfd-ai-chat-color-grey-medium);
-		background: var(--nfd-ai-chat-color-background);
+		color: var(--nfd-ai-chat-color-grey-medium);
 		cursor: not-allowed;
+		opacity: 0.55;
+	}
+
+	&:not(:disabled) {
+		background: var(--nfd-ai-chat-color-primary);
+		stroke: var(--nfd-ai-chat-color-white);
+		color: var(--nfd-ai-chat-color-white);
 	}
 
 	&:hover:not(:disabled) {
-		stroke: var(--nfd-ai-chat-color-primary);
-		background: var(--nfd-ai-chat-color-primary-light-12);
-		transform: translateY(-1px);
-		box-shadow: var(--nfd-ai-chat-shadow-sm);
-		transition: all 0.15s ease;
+		background: var(--nfd-ai-chat-color-primary-hover);
 	}
 
 	&:focus:not(:disabled) {
 		outline: none;
-		stroke: var(--nfd-ai-chat-color-primary);
-		background: var(--nfd-ai-chat-color-primary-light-16);
+		background: var(--nfd-ai-chat-color-primary-hover);
+		box-shadow: 0 0 0 3px var(--nfd-ai-chat-color-primary-light-20);
 	}
 
 	&:active:not(:disabled) {
-		transform: translateY(0);
-		stroke: var(--nfd-ai-chat-color-primary-hover);
-		background: var(--nfd-ai-chat-color-primary-light-20);
+		transform: scale(0.96);
+		background: var(--nfd-ai-chat-color-primary-active);
 	}
 }
 
+// Stop: same brand-blue family as Send when active. Continuous radial pulse signals "processing".
 .components-button.nfd-ai-chat-input__stop {
-	stroke: var(--nfd-ai-chat-color-error);
-	color: var(--nfd-ai-chat-color-error);
-
-	&:disabled,
-	&[aria-busy="true"] {
-		opacity: 0.5;
-		cursor: not-allowed;
-		pointer-events: none;
-	}
+	position: relative;
+	background: var(--nfd-ai-chat-color-primary);
+	color: var(--nfd-ai-chat-color-white);
+	stroke: var(--nfd-ai-chat-color-white);
+	animation: nfd-ai-chat-stop-pulse 1.6s ease-out infinite;
 
 	&:hover:not(:disabled) {
-		background: var(--nfd-ai-chat-color-error-alpha-10);
-		stroke: var(--nfd-ai-chat-color-error-hover);
-		color: var(--nfd-ai-chat-color-error-hover);
-		transform: translateY(-1px);
-		box-shadow: var(--nfd-ai-chat-shadow-sm);
+		animation: none;
+		background: var(--nfd-ai-chat-color-primary-hover);
+		box-shadow: 0 0 0 4px var(--nfd-ai-chat-color-primary-light-12);
+	}
+
+	&:focus:not(:disabled) {
+		outline: none;
+		animation: none;
+		box-shadow: 0 0 0 3px var(--nfd-ai-chat-color-primary-light-20);
 	}
 
 	&:active:not(:disabled) {
-		transform: translateY(0);
-		background: var(--nfd-ai-chat-color-error-alpha-15);
+		transform: scale(0.96);
+		background: var(--nfd-ai-chat-color-primary-active);
+	}
+
+	&:disabled,
+	&[aria-busy="true"] {
+		opacity: 0.55;
+		cursor: not-allowed;
+		pointer-events: none;
+		animation: none;
+	}
+}
+
+// Inner square (rendered as a span instead of an icon SVG so the round button doesn't show a circle-in-circle).
+.nfd-ai-chat-input__stop-icon {
+	display: block;
+	width: 9px;
+	height: 9px;
+	border-radius: 2px;
+	background: currentColor;
+}
+
+@keyframes nfd-ai-chat-stop-pulse {
+
+	0% {
+		box-shadow: 0 0 0 0 var(--nfd-ai-chat-color-primary-light-20);
+	}
+
+	70% {
+		box-shadow: 0 0 0 7px transparent;
+	}
+
+	100% {
+		box-shadow: 0 0 0 0 transparent;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+
+	.components-button.nfd-ai-chat-input__stop {
+		animation: none;
 	}
 }

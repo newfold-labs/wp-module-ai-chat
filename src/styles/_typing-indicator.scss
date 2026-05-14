@@ -1,50 +1,158 @@
-/* Typing Indicator */
+/* Typing Indicator — text-only; the assistant avatar in the shell animates instead of dots. */
 .nfd-ai-chat-typing-indicator {
 	display: flex;
 	align-items: center;
-	gap: var(--nfd-ai-chat-spacing-sm);
+	gap: 8px;
 	padding: var(--nfd-ai-chat-spacing-xs) 0;
 }
 
-.nfd-ai-chat-typing-indicator__dots {
-	display: flex;
+/* Connecting state — three rippling dots in front of the label. Distinct from the
+   assistant "thinking" heartbeat so users can tell connection vs reasoning apart. */
+.nfd-ai-chat-connecting-dots {
+	display: inline-flex;
 	align-items: center;
-	gap: var(--nfd-ai-chat-spacing-xs);
+	gap: 4px;
 
 	span {
-		width: 6px;
-		height: 6px;
+		display: inline-block;
+		width: 5px;
+		height: 5px;
 		border-radius: 50%;
-		background: var(--nfd-ai-chat-color-grey-dark);
-		animation: nfd-ai-chat-typing-bounce 1.4s ease-in-out infinite both;
+		background: var(--nfd-ai-chat-color-grey-medium, #999);
+		opacity: 0.4;
+		animation: nfd-ai-chat-connecting-pulse 1.1s ease-in-out infinite;
+	}
 
-		&:nth-child(2) {
-			animation-delay: 0.2s;
-		}
+	span:nth-child(2) {
+		animation-delay: 0.18s;
+	}
 
-		&:nth-child(3) {
-			animation-delay: 0.4s;
-		}
+	span:nth-child(3) {
+		animation-delay: 0.36s;
 	}
 }
 
-@keyframes nfd-ai-chat-typing-bounce {
+@keyframes nfd-ai-chat-connecting-pulse {
 
 	0%,
-	60%,
+	80%,
 	100% {
-		transform: translateY(0);
+		transform: scale(0.85);
+		opacity: 0.35;
+	}
+
+	40% {
+		transform: scale(1);
+		opacity: 1;
+		background: var(--nfd-ai-chat-color-primary, #0075fa);
+	}
+}
+
+/* Suppress the assistant avatar heartbeat for the Connecting state — it's about
+   network status, not the AI thinking, so the heartbeat is misleading there. */
+.nfd-ai-chat-message--assistant:has(.nfd-ai-chat-typing-indicator--connecting) .nfd-ai-chat-message__avatar {
+	animation: none;
+	opacity: 0.55;
+}
+
+@media (prefers-reduced-motion: reduce) {
+
+	.nfd-ai-chat-connecting-dots span {
+		animation: none;
+		opacity: 0.6;
+	}
+}
+
+// Animate the assistant avatar whenever the row carries a typing indicator.
+// Subtle "heartbeat" — small double scale pulse + color shift between black and brand purple.
+.nfd-ai-chat-message--assistant:has(.nfd-ai-chat-typing-indicator) .nfd-ai-chat-message__avatar {
+	animation: nfd-ai-chat-icon-heartbeat 1.3s ease-in-out infinite;
+	transform-origin: center;
+}
+
+@keyframes nfd-ai-chat-icon-heartbeat {
+
+	0%,
+	100% {
+		transform: scale(1);
+		color: var(--nfd-ai-chat-color-text);
+	}
+
+	15% {
+		transform: scale(1.06);
+		color: var(--nfd-ai-chat-color-primary);
 	}
 
 	30% {
-		transform: translateY(-4px);
+		transform: scale(1);
+		color: var(--nfd-ai-chat-color-primary);
+	}
+
+	45% {
+		transform: scale(1.06);
+		color: var(--nfd-ai-chat-color-primary);
+	}
+
+	65% {
+		transform: scale(1);
+		color: var(--nfd-ai-chat-color-primary);
 	}
 }
 
 .nfd-ai-chat-typing-indicator__text {
 	font-size: var(--nfd-ai-chat-font-size-base);
-	color: var(--nfd-ai-chat-color-grey-dark);
+	color: var(--nfd-ai-chat-color-text-secondary);
 	min-width: 0;
+	font-weight: 500;
+	background: linear-gradient(
+		90deg,
+		var(--nfd-ai-chat-color-text-secondary) 0%,
+		var(--nfd-ai-chat-color-text-secondary) 35%,
+		var(--nfd-ai-chat-color-text) 50%,
+		var(--nfd-ai-chat-color-text-secondary) 65%,
+		var(--nfd-ai-chat-color-text-secondary) 100%
+	);
+	background-size: 200% 100%;
+	background-position: 100% 0;
+	-webkit-background-clip: text;
+	background-clip: text;
+	-webkit-text-fill-color: transparent;
+	color: transparent;
+	animation: nfd-ai-chat-text-shimmer 2.4s linear infinite;
+}
+
+@keyframes nfd-ai-chat-text-shimmer {
+
+	0% {
+		background-position: 200% 0;
+	}
+
+	100% {
+		background-position: -200% 0;
+	}
+}
+
+// When an assistant message slot contains ONLY a typing indicator (no real content yet),
+// drop the bubble chrome so the loader floats. Specificity beats brand override (3,1 vs 3,0).
+.nfd-ai-chat-message--assistant .nfd-ai-chat-message__content:has(> .nfd-ai-chat-typing-indicator:only-child) {
+	background: transparent;
+	border: none;
+	box-shadow: none;
+	padding: 4px 2px;
+	border-radius: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+
+	.nfd-ai-chat-typing-indicator__text,
+	.nfd-ai-chat-message--assistant:has(.nfd-ai-chat-typing-indicator) .nfd-ai-chat-message__avatar {
+		animation: none;
+	}
+
+	.nfd-ai-chat-typing-indicator__text {
+		color: var(--nfd-ai-chat-color-text-secondary);
+		-webkit-text-fill-color: var(--nfd-ai-chat-color-text-secondary);
+	}
 }
 
 .nfd-ai-chat-typing-indicator__reasoning {

@@ -26,6 +26,7 @@ wpScriptsConfig.externals = {
 	'@wordpress/i18n': '@wordpress/i18n',
 	'@wordpress/components': '@wordpress/components',
 	'@wordpress/api-fetch': '@wordpress/api-fetch',
+	'@wordpress/icons': '@wordpress/icons',
 };
 
 module.exports = wpScriptsConfig;
