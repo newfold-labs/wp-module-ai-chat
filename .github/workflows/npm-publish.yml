@@ -5,12 +5,16 @@ on:
       - created
   workflow_dispatch:
 
+# Disable permissions for all available scopes by default.
+# Any needed permissions should be configured at the job level.
+permissions: {}
+
 jobs:
   build:
     runs-on: ubuntu-latest
     permissions:
-      contents: read
-      id-token: write
+      contents: read   # Required to clone the repo.
+      id-token: write  # Required to mint the OIDC token used for npm trusted publishing.
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       # Node 24+ required: trusted publishing (OIDC) needs npm 11.5.1+; Node 22 ships npm 10
