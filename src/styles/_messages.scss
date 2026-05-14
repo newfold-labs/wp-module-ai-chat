@@ -266,6 +266,59 @@
 			line-height: 1.55;
 		}
 
+		// Callout boxes — produced by the callout enhancer for lines that begin
+		// with "Note:", "Tip:", "Warning:", "Important:", etc.
+		.nfd-ai-chat-callout {
+			border-radius: var(--nfd-ai-chat-radius-md);
+			padding: 0.625rem 0.875rem;
+			color: var(--nfd-ai-chat-color-text);
+			background-color: var(--nfd-ai-chat-color-primary-light-8);
+			border-left-width: 3px;
+			border-left-style: solid;
+			border-left-color: var(--nfd-ai-chat-color-primary);
+
+			&--warn {
+				background-color: rgba(176, 109, 0, 0.08);
+				border-left-color: #b06d00;
+			}
+		}
+
+		// Status pill badges — produced by the status badge enhancer for known
+		// WP/WooCommerce/plugin status words (published, draft, pending, etc.).
+		.nfd-ai-chat-status {
+			display: inline-block;
+			padding: 0.05em 0.55em;
+			border-radius: var(--nfd-ai-chat-radius-full);
+			font-size: 0.82em;
+			font-weight: 500;
+			line-height: 1.5;
+			letter-spacing: 0.01em;
+			vertical-align: baseline;
+			text-transform: lowercase;
+			white-space: nowrap;
+
+			&--success {
+				background-color: rgba(0, 163, 42, 0.14);
+				color: #0a5e0a;
+			}
+			&--neutral {
+				background-color: rgba(0, 0, 0, 0.08);
+				color: var(--nfd-ai-chat-color-text-secondary);
+			}
+			&--warn {
+				background-color: rgba(176, 109, 0, 0.16);
+				color: #8a5400;
+			}
+			&--danger {
+				background-color: var(--nfd-ai-chat-color-error-alpha-15);
+				color: var(--nfd-ai-chat-color-error-active);
+			}
+			&--info {
+				background-color: var(--nfd-ai-chat-color-primary-light-12);
+				color: var(--nfd-ai-chat-color-primary-hover);
+			}
+		}
+
 		pre {
 			position: relative; // Anchor for the injected copy button.
 			background-color: #f6f8fa;

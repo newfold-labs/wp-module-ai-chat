@@ -48,6 +48,7 @@ const readArchiveCount = (consumer) => {
  * @param {boolean}  props.open
  * @param {Function} props.onOpenChange
  * @param {Function} props.onSelectConversation
+ * @param {Function} [props.onConversationDeleted] - Pass-through to ChatHistoryList; see its docs.
  * @param {number}   [props.refreshTrigger=0]
  * @param {boolean}  [props.disabled=false]
  * @param {number}   [props.maxHistoryItems]
@@ -58,6 +59,7 @@ const ChatHistoryDropdown = ({
 	open,
 	onOpenChange,
 	onSelectConversation,
+	onConversationDeleted,
 	refreshTrigger = 0,
 	disabled = false,
 	maxHistoryItems,
@@ -177,6 +179,7 @@ const ChatHistoryDropdown = ({
 				<ChatHistoryList
 					consumer={consumer}
 					onSelectConversation={handleSelect}
+					onConversationDeleted={onConversationDeleted}
 					disabled={disabled}
 					refreshTrigger={open ? refreshTrigger : 0}
 					emptyMessage={__("No conversations yet.", "wp-module-ai-chat")}

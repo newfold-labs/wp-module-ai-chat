@@ -3,7 +3,21 @@
  *
  * Converts common markdown syntax to HTML for chat messages.
  * Handles: headers, bold, italic, code, lists, links, and line breaks.
+ *
+ * Sits inside a small pipeline:
+ *
+ *   raw text → enhanceText → normalizeInlineLists → markdown → enhanceHtml → sanitize
+ *
+ * The enhancers (./messageEnhancers.js) are responsible for non-markdown UX
+ * improvements (callout boxes, status badges, key/value pair lists, WP-admin
+ * path linkification). This file owns the markdown core itself.
  */
+
+import {
+	enhanceHtml,
+	enhanceText,
+	hasEnhancementSignal,
+} from "./messageEnhancers";
 
 /**
  * Words to strip from the end of a URL when they were incorrectly included
@@ -70,6 +84,369 @@ const TRAILING_DIGIT_WORD = new RegExp(
 
 const URL_ONLY_PATTERN = /^https?:\/\/[^\s<>"]+$/;
 
+// ---------- Inline list normalization ----------
+// Some backends emit lists as a single paragraph, e.g.
+//   "Here are the posts: - A — published - B — draft - C — draft You can view ..."
+// Standard markdown list rules are line-anchored, so the paragraph renders as
+// one run-on sentence. The helpers below detect inline list patterns and
+// rewrite them as proper newline-separated markdown before parsing.
+
+const INLINE_LIST_MIN_ITEMS = 3;
+// Markers we accept as inline list separators. Em-dash (—) is included but
+// handled cautiously — see detectBulletedList — because it is also commonly
+// used WITHIN items (e.g. "Title — status").
+const INLINE_BULLET_MARKERS = ["-", "*", "•", "—"];
+const EM_DASH_MIN_ITEMS = 5; // higher bar for em-dash to suppress false positives
+
+// Closing-sentence cues. Used only as a fallback after pattern-based trailing
+// detection (which learns the recurring item shape from the other items)
+// fails to find a match.
+const TRAILING_CUE_SOURCES = [
+	"You can\\b",
+	"You may\\b",
+	"You'?ll\\b",
+	"You should\\b",
+	"You'?ve\\b",
+	"Click (?:here|the)\\b",
+	"Visit\\b",
+	"Go to\\b",
+	"Check (?:out|it|them)\\b",
+	"Let me know\\b",
+	"Would you (?:like|want)\\b",
+	"Open (?:them|the)\\b",
+	"See (?:them|the|more|all)\\b",
+	"View (?:them|the|all|more)\\b",
+	"Find (?:them|the|all|more)\\b",
+	"Manage (?:them|the)\\b",
+	"Edit (?:them|the)\\b",
+	"Browse (?:them|the)\\b",
+	"Need (?:help|anything)\\b",
+	"If you (?:want|need|'?d|'?re|like)\\b",
+	"Want me to\\b",
+	"Shall I\\b",
+	"Should I\\b",
+	"Tell me\\b",
+];
+const TRAILING_CUE_RE = new RegExp(
+	`\\s((?:${TRAILING_CUE_SOURCES.join("|")}).*)$`,
+	"i"
+);
+
+// Tail shape we look for in items when learning the closing pattern:
+// " <separator> <word>" at end of an item, e.g. " — published".
+const ITEM_TAIL_RE = /(\s+[—–\-|]\s+)([A-Za-z][A-Za-z0-9_-]*)\s*$/;
+
+function escapeForRegex(str) {
+	return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function detectBulletedList(line) {
+	// Build candidates: each marker that hits its required item threshold.
+	const candidates = [];
+	for (const marker of INLINE_BULLET_MARKERS) {
+		// " <marker> " preceded by a non-space character. The lookbehind
+		// prevents counting a marker that sits at the very start of the line.
+		const re = new RegExp(`(?<=\\S) ${escapeForRegex(marker)} `, "g");
+		const raw = [...line.matchAll(re)];
+		const minSeps =
+			(marker === "—" ? EM_DASH_MIN_ITEMS : INLINE_LIST_MIN_ITEMS) - 1;
+		if (raw.length >= minSeps) {
+			candidates.push({ marker, raw });
+		}
+	}
+	if (candidates.length === 0) {
+		return null;
+	}
+	// Em-dash collides with content (items often contain " — " internally),
+	// so prefer any other marker when one qualifies. Em-dash is only chosen
+	// when nothing else does.
+	const nonEmDash = candidates.filter((c) => c.marker !== "—");
+	const pool = nonEmDash.length > 0 ? nonEmDash : candidates;
+	const best = pool.reduce((a, b) => (a.raw.length >= b.raw.length ? a : b));
+	const matches = best.raw.map((m) => ({ index: m.index, width: m[0].length }));
+	// Em-dash safeguard: after splitting, verify no item contains another " — ".
+	// If it does, em-dash is being used as both separator and content, ambiguous.
+	if (best.marker === "—" && hasInternalEmDash(line, matches)) {
+		return null;
+	}
+	return { type: "bullet", marker: best.marker, matches };
+}
+
+function hasInternalEmDash(line, matches) {
+	let cursor = matches[0].index + matches[0].width;
+	for (let i = 1; i < matches.length; i++) {
+		if (line.slice(cursor, matches[i].index).includes(" — ")) {
+			return true;
+		}
+		cursor = matches[i].index + matches[i].width;
+	}
+	return line.slice(cursor).includes(" — ");
+}
+
+function detectNumberedList(line) {
+	const re = /(?:^|[^\d])(\d+)([.)])\s/g;
+	const raw = [...line.matchAll(re)];
+	if (raw.length < INLINE_LIST_MIN_ITEMS) {
+		return null;
+	}
+	// Numbers must be strictly sequential (1,2,3,...) to count as a list.
+	const nums = raw.map((m) => parseInt(m[1], 10));
+	for (let i = 1; i < nums.length; i++) {
+		if (nums[i] !== nums[i - 1] + 1) {
+			return null;
+		}
+	}
+	// Each match's [0] includes a leading non-digit char (consumed by the
+	// non-lookbehind alternative `[^\d]`). We need the index of the digit
+	// itself so we can slice items cleanly.
+	const matches = raw.map((m) => {
+		const markerWidth = m[1].length + m[2].length + 1;
+		const leadLen = m[0].length - markerWidth;
+		return {
+			index: m.index + leadLen,
+			width: markerWidth,
+		};
+	});
+	return { type: "number", matches, nums };
+}
+
+function detectInlineList(line) {
+	if (!line || line.length < 24) {
+		return null;
+	}
+	return detectNumberedList(line) || detectBulletedList(line);
+}
+
+/**
+ * Learn the recurring "<sep> <word>" tail from items 0..n-2, then split the
+ * last item at that boundary. Catches cases the hardcoded cue list can't,
+ * e.g. "Nvidia RTX 2090 — published View them in WooCommerce: <url>" — items
+ * 0..8 all end with " — published" or " — draft", so we know "published"
+ * marks the end of an item and anything after it in the last item is trailing.
+ */
+function trailingByLearnedPattern(items) {
+	if (items.length < INLINE_LIST_MIN_ITEMS) {
+		return null;
+	}
+	const tails = [];
+	for (let i = 0; i < items.length - 1; i++) {
+		const m = items[i].match(ITEM_TAIL_RE);
+		if (!m) {
+			return null;
+		}
+		tails.push({ sep: m[1].trim(), word: m[2] });
+	}
+	const sep = tails[0].sep;
+	if (!tails.every((t) => t.sep === sep)) {
+		return null;
+	}
+	const vocab = new Set(tails.map((t) => t.word.toLowerCase()));
+	const wordsAlt = [...vocab].map(escapeForRegex).join("|");
+	const splitRe = new RegExp(
+		`(\\s+${escapeForRegex(sep)}\\s+)(${wordsAlt})\\b\\s+(\\S.*)$`,
+		"i"
+	);
+	const lastItem = items[items.length - 1];
+	const lm = lastItem.match(splitRe);
+	if (!lm) {
+		return null;
+	}
+	const wordEnd = lm.index + lm[1].length + lm[2].length;
+	return {
+		items: items.slice(0, -1).concat(lastItem.slice(0, wordEnd).trim()),
+		trailing: lm[3].trim(),
+	};
+}
+
+function trailingByCue(items) {
+	const last = items[items.length - 1];
+	const match = last.match(TRAILING_CUE_RE);
+	if (!match || match.index <= 0) {
+		return null;
+	}
+	return {
+		items: items.slice(0, -1).concat(last.slice(0, match.index).trim()),
+		trailing: match[1].trim(),
+	};
+}
+
+/**
+ * When every non-last item ends with a URL, the last item's URL is also
+ * presumed to be the end of that item, and anything that follows it is
+ * trailing content. Targets shapes like:
+ *   "Title — status — edit: <url>" repeated, with a closing sentence after
+ *   the last URL.
+ */
+const URL_RE = /https?:\/\/[^\s<>"]+/g;
+const URL_AT_END_RE = /https?:\/\/[^\s<>"]+\s*$/;
+
+function trailingByUrlBoundary(items) {
+	if (items.length < INLINE_LIST_MIN_ITEMS) {
+		return null;
+	}
+	for (let i = 0; i < items.length - 1; i++) {
+		if (!URL_AT_END_RE.test(items[i])) {
+			return null;
+		}
+	}
+	const lastItem = items[items.length - 1];
+	const matches = [...lastItem.matchAll(URL_RE)];
+	if (matches.length === 0) {
+		return null;
+	}
+	const firstUrl = matches[0];
+	const urlEnd = firstUrl.index + firstUrl[0].length;
+	const after = lastItem.slice(urlEnd).trim();
+	if (!after) {
+		return null;
+	}
+	return {
+		items: items.slice(0, -1).concat(lastItem.slice(0, urlEnd).trim()),
+		trailing: after,
+	};
+}
+
+/**
+ * Detect and split off any closing sentence appended to the last list item.
+ * Tries pattern-based detection first (scales without a hardcoded vocabulary),
+ * then a URL-boundary heuristic, and falls back to closing-phrase cues.
+ */
+function applyTrailingSplit(items) {
+	return (
+		trailingByLearnedPattern(items) ||
+		trailingByUrlBoundary(items) ||
+		trailingByCue(items) || { items, trailing: "" }
+	);
+}
+
+function assembleOutput(preamble, listLines, trailing) {
+	const parts = [];
+	if (preamble) {
+		parts.push(preamble);
+	}
+	parts.push(listLines.join("\n"));
+	if (trailing) {
+		parts.push(trailing);
+	}
+	return parts.join("\n\n");
+}
+
+function extractItems(line, matches) {
+	// matches[i] describes a separator at `index` spanning `width` characters.
+	// Items live between consecutive separators.
+	const items = [];
+	let cursor = matches[0].index + matches[0].width;
+	for (let i = 1; i < matches.length; i++) {
+		items.push(line.slice(cursor, matches[i].index).trim());
+		cursor = matches[i].index + matches[i].width;
+	}
+	items.push(line.slice(cursor).trim());
+	return items.filter((s) => s.length > 0);
+}
+
+function rewriteInlineListLine(line, detection) {
+	const firstIdx = detection.matches[0].index;
+	let preamble = line.slice(0, firstIdx).trimEnd();
+	let rawItems = extractItems(line, detection.matches);
+	if (rawItems.length < INLINE_LIST_MIN_ITEMS) {
+		return line;
+	}
+	// When the backend omits the leading separator (e.g.
+	//   "Posts: A — published - B — draft - C — draft")
+	// the first item lands in the preamble. If the preamble's tail matches the
+	// shape of the other items, fold it back in as the first item.
+	if (preamble && preambleSharesItemShape(preamble, rawItems)) {
+		const intro = preamble.match(/^(.*?[:!?]\s*)(\S.*)$/);
+		if (intro) {
+			rawItems = [intro[2].trim(), ...rawItems];
+			preamble = intro[1].trimEnd();
+		} else {
+			rawItems = [preamble, ...rawItems];
+			preamble = "";
+		}
+	}
+	const { items, trailing } = applyTrailingSplit(rawItems);
+
+	const formatted =
+		detection.type === "number"
+			? items.map((it, i) => `${detection.nums[0] + i}. ${it}`)
+			: items.map((it) => `- ${it}`);
+	return assembleOutput(preamble, formatted, trailing);
+}
+
+function preambleSharesItemShape(preamble, items) {
+	// Rule A: preamble ends with the same separator+word tail as the other
+	// items (e.g. "Posts: A — published" vs items ending "— draft"/"— published").
+	const pm = preamble.match(ITEM_TAIL_RE);
+	if (pm) {
+		const sep = pm[1].trim();
+		let matches = 0;
+		for (const it of items.slice(0, 4)) {
+			const m = it.match(ITEM_TAIL_RE);
+			if (m && m[1].trim() === sep) {
+				matches += 1;
+			}
+		}
+		if (matches >= 2) {
+			return true;
+		}
+	}
+	// Rule B: preamble has an "Intro: content" structure where content is
+	// roughly the same scale as the items (e.g. "Tools: hammer" with items
+	// "screwdriver", "wrench", "saw").
+	const intro = preamble.match(/^.*?[:!?]\s+(\S.*)$/);
+	if (intro) {
+		const remainder = intro[1].trim();
+		if (remainder) {
+			const lens = items
+				.slice(0, 4)
+				.map((s) => s.length)
+				.sort((a, b) => a - b);
+			const median = lens[Math.floor(lens.length / 2)] || 0;
+			if (remainder.length <= Math.max(median * 2, 12)) {
+				return true;
+			}
+		}
+	}
+	return false;
+}
+
+/**
+ * True when `text` contains an inline list that the standard markdown rules
+ * would miss. Used by containsMarkdown so messages without other markdown
+ * cues (bold, headers, etc.) still enter the markdown render path.
+ *
+ * @param {string} text
+ * @return {boolean}
+ */
+export function containsInlineList(text) {
+	if (!text || typeof text !== "string") {
+		return false;
+	}
+	return normalizeInlineLists(text) !== text;
+}
+
+/**
+ * Rewrite inline lists in `text` as newline-separated markdown so the rest of
+ * the parsing pipeline can render them as <ul>/<ol>. Lines without a
+ * recognized inline list pattern are returned unchanged.
+ *
+ * @param {string} text
+ * @return {string}
+ */
+export function normalizeInlineLists(text) {
+	if (!text || typeof text !== "string") {
+		return text;
+	}
+	return text
+		.split("\n")
+		.map((line) => {
+			const detection = detectInlineList(line);
+			return detection ? rewriteInlineListLine(line, detection) : line;
+		})
+		.join("\n");
+}
+
 /**
  * Check if a string contains markdown syntax
  *
@@ -95,21 +472,44 @@ export function containsMarkdown(text) {
 		/\[([^\]]+)\]\(([^)]+)\)/, // Links
 	];
 
-	return markdownPatterns.some((pattern) => pattern.test(text));
+	if (markdownPatterns.some((pattern) => pattern.test(text))) {
+		return true;
+	}
+	if (containsInlineList(text)) {
+		return true;
+	}
+	// Enhancer-only inputs (callouts, status words, WP-admin paths,
+	// key/value pair lists) — route through the markdown path so the
+	// enhancers in the pipeline can do their work.
+	return hasEnhancementSignal(text);
 }
 
 /**
- * Parse markdown text to HTML
+ * Parse markdown text to HTML.
  *
- * @param {string} text - The markdown text to parse
- * @return {string} HTML string
+ * @param {string} text - The markdown text to parse.
+ * @param {object} [options]
+ * @param {boolean} [options.streaming=false] - True while the message is
+ *   still being typewriter-streamed. Skips the structural transforms
+ *   (inline-list reshape, key/value pair fold, HTML-stage enhancers like
+ *   status badges and callouts) so the visible text doesn't snap layouts
+ *   mid-stream. The text renders as basic markdown during streaming and
+ *   re-parses with the full pipeline once the caller passes streaming=false.
+ * @return {string} HTML string.
  */
-export function parseMarkdown(text) {
+export function parseMarkdown(text, options = {}) {
 	if (!text || typeof text !== "string") {
 		return "";
 	}
+	const { streaming = false } = options;
 
-	let html = text;
+	// Text-stage enhancers + inline-list reshape run before the line-anchored
+	// markdown rules. Skipped during streaming to avoid the paragraph→list
+	// snap that happens once a detection threshold is crossed.
+	let html = streaming ? text : enhanceText(text);
+	if (!streaming) {
+		html = normalizeInlineLists(html);
+	}
 
 	// Escape HTML entities first (but preserve existing HTML)
 	html = html
@@ -155,7 +555,7 @@ export function parseMarkdown(text) {
 			if (leadingMatch && isRestUrl) {
 				const leadingWords = leadingMatch[1];
 				const safeUrlText = rest
-					.replace(/&/g, "&amp;")
+					.replace(/&(?![\w#]+;)/g, "&amp;")
 					.replace(/</g, "&lt;")
 					.replace(/>/g, "&gt;")
 					.replace(/"/g, "&quot;");
@@ -245,6 +645,12 @@ export function parseMarkdown(text) {
 	// Linkify any remaining bare URLs in text content (e.g. inside list items)
 	html = linkifyBareUrlsInHtml(html);
 
+	// HTML-stage enhancers (status badges, WP-admin paths, callout decoration)
+	// run last, just before the result is handed off for sanitization.
+	if (!streaming) {
+		html = enhanceHtml(html);
+	}
+
 	return html;
 }
 
@@ -303,8 +709,11 @@ export function linkifyUrls(text) {
 				return fullMatch;
 			}
 			const safeHref = trimmed.replace(/"/g, "&quot;");
+			// Entity-preserving escape: don't re-encode existing entities like
+			// the `&amp;` that the parser's HTML escape pass has already
+			// produced for query strings (e.g. "?post=51&action=edit").
 			const safeText = trimmed
-				.replace(/&/g, "&amp;")
+				.replace(/&(?![\w#]+;)/g, "&amp;")
 				.replace(/</g, "&lt;")
 				.replace(/>/g, "&gt;")
 				.replace(/"/g, "&quot;");
@@ -315,6 +724,8 @@ export function linkifyUrls(text) {
 
 export default {
 	containsMarkdown,
+	containsInlineList,
+	normalizeInlineLists,
 	parseMarkdown,
 	linkifyUrls,
 };
