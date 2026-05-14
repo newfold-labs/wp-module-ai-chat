@@ -12,6 +12,7 @@ permissions: {}
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: read   # Required to clone the repo.
       id-token: write  # Required to mint the OIDC token used for npm trusted publishing.

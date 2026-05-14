@@ -23,6 +23,7 @@ jobs:
   phpcs:
     name: Run PHP Code Sniffer
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: read       # Required to clone the repo.
       pull-requests: read  # Required by technote-space/get-diff-action to look up PRs for the pushed branch on push events.
