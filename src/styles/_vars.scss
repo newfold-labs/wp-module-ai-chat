@@ -72,24 +72,37 @@
 
 /* -------------------------------------------------------------------------- */
 
-/* Bluehost Brand */
+/* Bluehost Brand
+ * Primary tracks the Bluehost logo / brand-recognition blue (#346BD5), used across
+ * the plugin's logo SVGs and marketing surfaces. Tailwind's `colors.primary.DEFAULT`
+ * (#196BDE) is the admin-UI primary — visually similar but more saturated; we
+ * intentionally use the logo blue here so the chat surface feels brand-native.
+ * Neutrals still source from the plugin's tailwind config.
+ */
 .nfd-brand-bluehost,
 [data-brand="bluehost"] {
 
-	/* Primary Bluehost Blue - #0075FA */
-	--nfd-ai-chat-color-primary: #0075fa;
-	--nfd-ai-chat-color-primary-hover: #0066e0;
-	--nfd-ai-chat-color-primary-active: #0055c2;
-	--nfd-ai-chat-color-primary-light-8: rgba(0, 117, 250, 0.08);
-	--nfd-ai-chat-color-primary-light-12: rgba(0, 117, 250, 0.12);
-	--nfd-ai-chat-color-primary-light-16: rgba(0, 117, 250, 0.16);
-	--nfd-ai-chat-color-primary-light-20: rgba(0, 117, 250, 0.2);
+	/* Bluehost logo blue — RGB(52, 107, 213). Hover/active are computed darken
+	 * steps so the interactive ramp stays in-hue without jumping to navy.
+	 */
+	--nfd-ai-chat-color-primary: #346bd5;
+	--nfd-ai-chat-color-primary-hover: #2c5fc1;
+	--nfd-ai-chat-color-primary-active: #2554ad;
+	--nfd-ai-chat-color-primary-light-8: rgba(52, 107, 213, 0.08);
+	--nfd-ai-chat-color-primary-light-12: rgba(52, 107, 213, 0.12);
+	--nfd-ai-chat-color-primary-light-16: rgba(52, 107, 213, 0.16);
+	--nfd-ai-chat-color-primary-light-20: rgba(52, 107, 213, 0.2);
 
-	/* Enhanced UI colors for professional look */
-	--nfd-ai-chat-color-background: #f8f9fa;
-	--nfd-ai-chat-color-border: #e5e7eb;
-	--nfd-ai-chat-color-text: #111827;
-	--nfd-ai-chat-color-text-secondary: #6b7280;
+	/* Neutrals — sourced from the plugin tailwind config:
+	 *   background ← `colors.canvas`  (#F1F5F9)
+	 *   border     ← `colors.line`    (#E2E8F0)
+	 *   text       ← `colors.title`   (#0F172A)
+	 *   text-sec   ← `colors.body`    (#4A5567)
+	 */
+	--nfd-ai-chat-color-background: #f1f5f9;
+	--nfd-ai-chat-color-border: #e2e8f0;
+	--nfd-ai-chat-color-text: #0f172a;
+	--nfd-ai-chat-color-text-secondary: #4a5567;
 }
 
 /* Add more brands here as needed */

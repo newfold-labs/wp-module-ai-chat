@@ -7,7 +7,7 @@ import { useState, useEffect, useRef } from "@wordpress/element";
 /**
  * Internal dependencies
  */
-import AILogo from "../ui/AILogo";
+import SparklesOutlineIcon from "../icons/SparklesOutlineIcon";
 import SuggestionButton from "../ui/SuggestionButton";
 
 const TYPING_SPEED_MS = 40;
@@ -84,7 +84,9 @@ const WelcomeScreen = ({
 		<div className="nfd-ai-chat-welcome">
 			<div className="nfd-ai-chat-welcome__content">
 				<div className="nfd-ai-chat-welcome__avatar">
-					<AILogo width={64} height={64} />
+					{/* No gradient props — the parent's `color` (brand primary via CSS var) drives
+					    the stroke. Keeps the icon brand-aware without runtime style juggling. */}
+					<SparklesOutlineIcon width={56} height={56} />
 				</div>
 				<div className="nfd-ai-chat-welcome__message">
 					<div className="nfd-ai-chat-welcome__title">{displayedTitle}</div>

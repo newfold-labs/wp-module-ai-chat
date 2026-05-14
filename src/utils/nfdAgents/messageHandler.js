@@ -47,16 +47,14 @@ const clearTypingTimeout = (typingTimeoutRef) => {
 /**
  * Helper: finalize typing state after content is received.
  *
- * @param {Object}   deps                    Subset of handler deps
- * @param {Function} deps.setIsTyping        State setter
- * @param {Function} deps.setStatus          State setter
- * @param {Function} deps.setCurrentResponse State setter
- * @param {Object}   deps.typingTimeoutRef   React ref holding the timeout ID
+ * @param {Object}   deps                  Subset of handler deps
+ * @param {Function} deps.setIsTyping      State setter
+ * @param {Function} deps.setStatus        State setter
+ * @param {Object}   deps.typingTimeoutRef React ref holding the timeout ID
  */
-const finalizeTyping = ({ setIsTyping, setStatus, setCurrentResponse, typingTimeoutRef }) => {
+const finalizeTyping = ({ setIsTyping, setStatus, typingTimeoutRef }) => {
 	setIsTyping(false);
 	setStatus(null);
-	setCurrentResponse("");
 	clearTypingTimeout(typingTimeoutRef);
 };
 
@@ -88,10 +86,8 @@ const addAssistantMsg = (setMessages, content, idSuffix = "") => {
  * @param {Object}   deps.isStoppedRef       Ref — skip messages after stop
  * @param {Object}   deps.hasUserMessageRef  Ref — controls greeting filtering
  * @param {Object}   deps.typingTimeoutRef   Ref — typing indicator timeout
- * @param {number}   deps.typingTimeout      TYPING_TIMEOUT constant
  * @param {Function} deps.setIsTyping        State setter
  * @param {Function} deps.setStatus          State setter
- * @param {Function} deps.setCurrentResponse State setter
  * @param {Function} deps.setMessages        State setter
  * @param {Function} deps.setConversationId  State setter
  * @param {Function} deps.setError           State setter
@@ -104,10 +100,8 @@ export function createMessageHandler(deps) {
 		isStoppedRef,
 		hasUserMessageRef,
 		typingTimeoutRef,
-		typingTimeout,
 		setIsTyping,
 		setStatus,
-		setCurrentResponse,
 		setMessages,
 		setConversationId,
 		setError,
@@ -141,39 +135,16 @@ export function createMessageHandler(deps) {
 		if (data.type === "typing_stop") {
 			setIsTyping(false);
 			setStatus(null);
-			setCurrentResponse("");
 			clearTypingTimeout(typingTimeoutRef);
 			return;
 		}
 
 		// --- streaming_chunk / chunk ---
+		// Backend bursts these without pacing for guardrail-rewritten turns, so
+		// rendering them live looks identical to revealing the structured_output
+		// payload via the ChatMessage typewriter. Drop them; structured_output
+		// carries the full text.
 		if (data.type === "streaming_chunk" || data.type === "chunk") {
-			if (isStoppedRef.current) {
-				return;
-			}
-			const content = data.content || data.chunk || data.text || "";
-			if (content) {
-				setCurrentResponse((prev) => {
-					const newContent = prev + content;
-					if (
-						!hasUserMessageRef.current &&
-						newContent.length < 100 &&
-						isInitialGreeting(newContent)
-					) {
-						return "";
-					}
-					setIsTyping(true);
-					if (typingTimeoutRef.current) {
-						clearTimeout(typingTimeoutRef.current);
-					}
-					typingTimeoutRef.current = setTimeout(() => {
-						setIsTyping(false);
-						setStatus(null);
-						typingTimeoutRef.current = null;
-					}, typingTimeout);
-					return newContent;
-				});
-			}
 			return;
 		}
 
@@ -200,16 +171,7 @@ export function createMessageHandler(deps) {
 
 			const structuredMessage = data.message || data.response_content?.message;
 			const filtered = filterMessage(structuredMessage, hasUserMessageRef.current);
-
 			if (filtered) {
-				// Finalize any current streaming response first
-				setCurrentResponse((prev) => {
-					if (prev) {
-						addAssistantMsg(setMessages, prev, "-streaming");
-					}
-					return "";
-				});
-
 				addAssistantMsg(setMessages, filtered);
 				finalizeTyping(deps);
 			}
@@ -235,46 +197,10 @@ export function createMessageHandler(deps) {
 
 		// --- message / complete ---
 		if (data.type === "message" || data.type === "complete") {
-			let hasContent = false;
-			setCurrentResponse((prev) => {
-				if (prev) {
-					const trimmedContent = prev.trim();
-					if (
-						trimmedContent === "No content provided" ||
-						trimmedContent === "sales_requested" ||
-						trimmedContent.toLowerCase() === "sales_requested"
-					) {
-						return "";
-					}
-					if (!hasUserMessageRef.current && prev.length < 150 && isInitialGreeting(prev)) {
-						return "";
-					}
-					setMessages((prevMessages) => [
-						...prevMessages,
-						{
-							id: `msg-${Date.now()}`,
-							role: "assistant",
-							type: "assistant",
-							content: prev,
-							timestamp: new Date(),
-							animateTyping: true,
-						},
-					]);
-					hasContent = true;
-				}
-				return "";
-			});
-
-			if (!hasContent) {
-				const payloadMessage = data.message || data.response_content?.message;
-				const filtered = filterMessage(payloadMessage, hasUserMessageRef.current);
-				if (filtered) {
-					addAssistantMsg(setMessages, filtered);
-					hasContent = true;
-				}
-			}
-
-			if (hasContent) {
+			const payloadMessage = data.message || data.response_content?.message;
+			const filtered = filterMessage(payloadMessage, hasUserMessageRef.current);
+			if (filtered) {
+				addAssistantMsg(setMessages, filtered);
 				finalizeTyping(deps);
 			}
 			return;
@@ -293,7 +219,6 @@ export function createMessageHandler(deps) {
 			const filtered = filterMessage(messageContent, hasUserMessageRef.current);
 
 			if (!filtered) {
-				setCurrentResponse("");
 				return;
 			}
 
@@ -307,7 +232,6 @@ export function createMessageHandler(deps) {
 			setError(data.message || data.error || "An error occurred");
 			setIsTyping(false);
 			setStatus(null);
-			setCurrentResponse("");
 			return;
 		}
 
@@ -317,7 +241,6 @@ export function createMessageHandler(deps) {
 			const filtered = filterMessage(messageContent, hasUserMessageRef.current);
 
 			if (!filtered) {
-				setCurrentResponse("");
 				return;
 			}
 

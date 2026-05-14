@@ -1,8 +1,9 @@
 /**
  * Chat History Dropdown Component
  *
- * Clock icon button that toggles a dropdown panel containing ChatHistoryList.
- * Click outside and Escape close the dropdown.
+ * History icon button that toggles a dropdown panel containing ChatHistoryList.
+ * Click outside and Escape close the dropdown. Shows a small dot indicator when
+ * any archived conversations exist for the consumer.
  */
 
 import {
@@ -14,28 +15,30 @@ import {
 	createPortal,
 } from "@wordpress/element";
 import { __ } from "@wordpress/i18n";
+import { Icon, backup } from "@wordpress/icons";
+import { getChatHistoryStorageKeys } from "../../constants/nfdAgents/storageKeys";
 import ChatHistoryList from "./ChatHistoryList";
 
 /**
- * Clock / history icon - inline SVG
+ * Read the archive size for a consumer without parsing every entry. Used to
+ * show a small dot indicator on the trigger when conversations exist.
  *
- * @param {Object} props - Props to spread onto the SVG element.
+ * @param {string} consumer
+ * @return {number}
  */
-const ClockIcon = (props) => (
-	<svg
-		width="16"
-		height="16"
-		viewBox="0 0 24 24"
-		fill="none"
-		xmlns="http://www.w3.org/2000/svg"
-		aria-hidden="true"
-		focusable="false"
-		{...props}
-	>
-		<circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="2" />
-		<path d="M12 7v5l3 3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-	</svg>
-);
+const readArchiveCount = (consumer) => {
+	try {
+		const keys = getChatHistoryStorageKeys(consumer);
+		const raw = window.localStorage.getItem(keys.archive);
+		if (!raw) {
+			return 0;
+		}
+		const parsed = JSON.parse(raw);
+		return Array.isArray(parsed) ? parsed.length : 0;
+	} catch (_err) {
+		return 0;
+	}
+};
 
 /**
  * Dropdown trigger and portal-rendered panel with ChatHistoryList.
@@ -62,13 +65,34 @@ const ChatHistoryDropdown = ({
 	const triggerRef = useRef(null);
 	const panelRef = useRef(null);
 	const [position, setPosition] = useState({ top: 0, left: 0, openUp: false });
+	const [hasItems, setHasItems] = useState(false);
+
+	// Refresh the "has items" indicator on mount, when the panel opens, when an
+	// archive change is signalled via refreshTrigger, and when other tabs update storage.
+	useEffect(() => {
+		setHasItems(readArchiveCount(consumer) > 0);
+	}, [consumer, refreshTrigger, open]);
+
+	useEffect(() => {
+		const handleStorage = (e) => {
+			if (!e.key) {
+				return;
+			}
+			const keys = getChatHistoryStorageKeys(consumer);
+			if (e.key === keys.archive) {
+				setHasItems(readArchiveCount(consumer) > 0);
+			}
+		};
+		window.addEventListener("storage", handleStorage);
+		return () => window.removeEventListener("storage", handleStorage);
+	}, [consumer]);
 
 	const updatePosition = useCallback(() => {
 		if (!triggerRef.current) {
 			return;
 		}
 		const rect = triggerRef.current.getBoundingClientRect();
-		const panelHeight = 240;
+		const panelHeight = 320;
 		const spaceBelow = window.innerHeight - rect.bottom;
 		const openUp = spaceBelow < panelHeight && rect.top > spaceBelow;
 		setPosition({
@@ -134,9 +158,9 @@ const ChatHistoryDropdown = ({
 	const dropdownPanel = (
 		<div
 			ref={panelRef}
-			className="nfd-ai-chat-history-dropdown"
+			className={`nfd-ai-chat-history-dropdown${position.openUp ? " nfd-ai-chat-history-dropdown--up" : ""}`}
 			role="dialog"
-			aria-label={__("Chat history", "wp-module-ai-chat")}
+			aria-label={__("Recent conversations", "wp-module-ai-chat")}
 			style={{
 				position: "fixed",
 				top: position.openUp ? "auto" : position.top,
@@ -146,6 +170,9 @@ const ChatHistoryDropdown = ({
 				zIndex: 100000,
 			}}
 		>
+			<div className="nfd-ai-chat-history-dropdown__header">
+				{__("Recent conversations", "wp-module-ai-chat")}
+			</div>
 			<div className="nfd-ai-chat-history-dropdown-inner">
 				<ChatHistoryList
 					consumer={consumer}
@@ -164,15 +191,15 @@ const ChatHistoryDropdown = ({
 			<button
 				ref={triggerRef}
 				type="button"
-				className={`nfd-ai-chat-history-dropdown-trigger ${open ? "is-open" : ""}`}
+				className={`nfd-ai-chat-header__btn nfd-ai-chat-history-dropdown-trigger${open ? " is-open" : ""}${hasItems ? " has-items" : ""}`}
 				onClick={handleTriggerClick}
 				disabled={disabled}
 				aria-expanded={open}
-				aria-haspopup="true"
-				aria-label={__("Chat history", "wp-module-ai-chat")}
-				title={__("Chat history", "wp-module-ai-chat")}
+				aria-haspopup="dialog"
+				aria-label={__("Recent conversations", "wp-module-ai-chat")}
+				title={__("Recent conversations", "wp-module-ai-chat")}
 			>
-				<ClockIcon />
+				<Icon icon={backup} size={18} />
 			</button>
 			{open && createPortal(dropdownPanel, document.body)}
 		</div>
