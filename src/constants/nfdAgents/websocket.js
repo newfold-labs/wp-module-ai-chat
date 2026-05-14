@@ -34,7 +34,10 @@ export const NFD_AGENTS_WEBSOCKET = {
 	RECONNECT_DELAY: 1000, // Base delay between reconnect attempts (ms)
 	MAX_RECONNECT_DELAY: 30000, // Cap exponential backoff so high attempt counts don't push waits into minutes (ms)
 	RECONNECT_JITTER_RATIO: 0.2, // Apply ±20% jitter to backoff so multiple tabs don't reconnect in lockstep
-	TYPING_TIMEOUT: 60000, // Hide typing indicator if no response within this time (ms)
+	// Hide typing indicator if backend goes silent (no event of any kind) for this long.
+	// Any incoming WS event refreshes this window (see messageHandler), so the timer only
+	// fires when the backend has truly stopped emitting — not while a long tool call is in flight.
+	TYPING_TIMEOUT: 180000,
 	WS_CLOSE_AUTH_FAILED,
 	WS_CLOSE_MISSING_TOKEN,
 	JWT_REFRESH_BUFFER_MS: FIVE_MINUTES_MS,
