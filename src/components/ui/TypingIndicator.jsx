@@ -9,6 +9,7 @@ import { TYPING_STATUS } from "../../constants/nfdAgents/typingStatus";
  * Internal dependencies
  */
 import { getToolDetails } from "../../utils/nfdAgents/typingIndicatorToolDisplay";
+import { groupConsecutiveTools } from "../../utils/nfdAgents/groupTools";
 import AssistantMessageShell from "./AssistantMessageShell";
 
 /**
@@ -123,8 +124,14 @@ const ToolExecutionItem = ({ tool, isActive, progress, isComplete, isError }) =>
 		>
 			<div className="nfd-ai-chat-tool-execution__item-header">
 				{getIcon()}
-				<span className="nfd-ai-chat-tool-execution__item-title">{details.title}</span>
-				{details.params && (
+				<span className="nfd-ai-chat-tool-execution__item-title">
+					{details.title}
+					{tool.total > 1 &&
+						(tool.completed < tool.total
+							? ` (${tool.completed}/${tool.total})`
+							: ` (${tool.total})`)}
+				</span>
+				{!(tool.total > 1) && details.params && (
 					<span className="nfd-ai-chat-tool-execution__item-params">{details.params}</span>
 				)}
 			</div>
@@ -223,69 +230,51 @@ const TypingIndicator = ({
 						"nfd-ai-chat-tool-execution--collapsed": !isExpanded,
 					})}
 				>
-						<button
-							type="button"
-							className="nfd-ai-chat-tool-execution__header"
-							onClick={() => setIsExpanded(!isExpanded)}
-							aria-expanded={isExpanded ? "true" : "false"}
-						>
-							{isExpanded ? (
-								<ChevronDown className="nfd-ai-chat-tool-execution__chevron" size={12} />
-							) : (
-								<ChevronRight className="nfd-ai-chat-tool-execution__chevron" size={12} />
-							)}
-
-							{renderHeaderLabel()}
-						</button>
-
-						{isExpanded && (
-							<div className="nfd-ai-chat-tool-execution__list">
-								{executedTools.map((tool, index) => (
-									<ToolExecutionItem
-										key={tool.id || `executed-${index}`}
-										tool={tool}
-										isActive={false}
-										isComplete={!tool.isError}
-										isError={tool.isError}
-										progress={null}
-									/>
-								))}
-
-								{activeToolCall && (
-									<ToolExecutionItem
-										key={activeToolCall.id || "active"}
-										tool={activeToolCall}
-										isActive={true}
-										isComplete={false}
-										isError={false}
-										progress={toolProgress}
-									/>
-								)}
-
-								{isBetweenBatches && (
-									<ToolExecutionItem
-										key="preparing"
-										tool={{ name: "preparing-changes" }}
-										isActive={true}
-										isComplete={false}
-										isError={false}
-										progress={null}
-									/>
-								)}
-
-								{pendingTools.map((tool, index) => (
-									<ToolExecutionItem
-										key={tool.id || `pending-${index}`}
-										tool={tool}
-										isActive={false}
-										isComplete={false}
-										isError={false}
-										progress={null}
-									/>
-								))}
-							</div>
+					<button
+						type="button"
+						className="nfd-ai-chat-tool-execution__header"
+						onClick={() => setIsExpanded(!isExpanded)}
+						aria-expanded={isExpanded ? "true" : "false"}
+					>
+						{isExpanded ? (
+							<ChevronDown className="nfd-ai-chat-tool-execution__chevron" size={12} />
+						) : (
+							<ChevronRight className="nfd-ai-chat-tool-execution__chevron" size={12} />
 						)}
-					</div>
+
+						{renderHeaderLabel()}
+					</button>
+
+					{isExpanded && (
+						<div className="nfd-ai-chat-tool-execution__list">
+							{groupConsecutiveTools({
+								executed: executedTools,
+								active: activeToolCall,
+								pending: pendingTools,
+							}).map((group, index) => (
+								<ToolExecutionItem
+									key={group.id || `group-${index}`}
+									tool={group}
+									isActive={group.activeCount > 0}
+									isComplete={group.completed === group.total && group.total > 0}
+									isError={group.hasError}
+									progress={group.activeCount > 0 ? toolProgress : null}
+								/>
+							))}
+
+							{isBetweenBatches && (
+								<ToolExecutionItem
+									key="preparing"
+									tool={{ name: "preparing-changes" }}
+									isActive={true}
+									isComplete={false}
+									isError={false}
+									progress={null}
+								/>
+							)}
+						</div>
+					)}
+				</div>
 			</AssistantMessageShell>
 		);
 	}

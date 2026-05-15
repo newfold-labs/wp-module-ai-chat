@@ -14,6 +14,7 @@ import classnames from "classnames";
  * Internal dependencies
  */
 import { getToolDetails } from "../../utils/nfdAgents/typingIndicatorToolDisplay";
+import { groupConsecutiveTools } from "../../utils/nfdAgents/groupTools";
 
 /**
  * Safely convert a value to a string for display
@@ -179,8 +180,11 @@ const ToolExecutionItem = ({ tool, isError, result }) => {
 						size={12}
 					/>
 				)}
-				<span className="nfd-ai-chat-tool-execution__item-title">{details.title}</span>
-				{details.params && (
+				<span className="nfd-ai-chat-tool-execution__item-title">
+					{details.title}
+					{tool.total > 1 && ` (${tool.total})`}
+				</span>
+				{!(tool.total > 1) && details.params && (
 					<span className="nfd-ai-chat-tool-execution__item-params">{details.params}</span>
 				)}
 			</div>
@@ -207,6 +211,8 @@ const ToolExecutionList = ({ executedTools = [], toolResults = [] }) => {
 		return null;
 	}
 
+	const grouped = groupConsecutiveTools({ executed: executedTools });
+
 	// Create a map of results by tool ID for quick lookup
 	const resultsMap = new Map();
 	if (toolResults && Array.isArray(toolResults)) {
@@ -217,8 +223,8 @@ const ToolExecutionList = ({ executedTools = [], toolResults = [] }) => {
 		});
 	}
 
-	const hasErrors = executedTools.some((tool) => tool.isError);
-	const totalTools = executedTools.length;
+	const hasErrors = grouped.some((group) => group.hasError);
+	const totalTools = grouped.length;
 
 	return (
 		<div
@@ -247,12 +253,12 @@ const ToolExecutionList = ({ executedTools = [], toolResults = [] }) => {
 
 			{isExpanded && (
 				<div className="nfd-ai-chat-tool-execution__list">
-					{executedTools.map((tool, index) => (
+					{grouped.map((tool, index) => (
 						<ToolExecutionItem
 							key={tool.id || `tool-${index}`}
 							tool={tool}
-							isError={tool.isError}
-							result={resultsMap.get(tool.id)}
+							isError={tool.hasError}
+							result={tool.total === 1 ? resultsMap.get(tool.id) : null}
 						/>
 					))}
 				</div>
