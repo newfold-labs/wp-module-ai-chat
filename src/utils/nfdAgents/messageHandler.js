@@ -93,6 +93,11 @@ const addAssistantMsg = (setMessages, content, idSuffix = "") => {
  * @param {Function} deps.setError           State setter
  * @param {Function} deps.saveSessionId      callback(sessionId) — persist to ref + localStorage
  * @param {Function} deps.saveConversationId callback(id) — persist to localStorage
+ * @param {Function} [deps.bumpTypingTimeout] Optional. Refreshes the typing-indicator
+ *                                            auto-hide timer when an active timeout exists.
+ *                                            Called for every progress event so a long tool
+ *                                            call or summarization phase doesn't trip the
+ *                                            "no response in N seconds" auto-hide.
  * @return {Function} handleMessage(data) — call with parsed JSON from ws.onmessage
  */
 export function createMessageHandler(deps) {
@@ -107,7 +112,14 @@ export function createMessageHandler(deps) {
 		setError,
 		saveSessionId,
 		saveConversationId,
+		bumpTypingTimeout,
 	} = deps;
+
+	const refreshTyping = () => {
+		if (typeof bumpTypingTimeout === "function") {
+			bumpTypingTimeout();
+		}
+	};
 
 	return function handleMessage(data) {
 		// If user has stopped generation, ignore all messages except session_established
@@ -143,8 +155,10 @@ export function createMessageHandler(deps) {
 		// Backend bursts these without pacing for guardrail-rewritten turns, so
 		// rendering them live looks identical to revealing the structured_output
 		// payload via the ChatMessage typewriter. Drop them; structured_output
-		// carries the full text.
+		// carries the full text. Still refresh the typing timer so the indicator
+		// doesn't auto-hide mid-stream.
 		if (data.type === "streaming_chunk" || data.type === "chunk") {
+			refreshTyping();
 			return;
 		}
 
@@ -181,6 +195,7 @@ export function createMessageHandler(deps) {
 		// --- tool_call ---
 		if (data.type === "tool_call") {
 			setStatus(getStatusForEventType("tool_call"));
+			refreshTyping();
 			return;
 		}
 
@@ -192,6 +207,7 @@ export function createMessageHandler(deps) {
 				setConversationId(newConversationId);
 				saveConversationId(newConversationId);
 			}
+			refreshTyping();
 			return;
 		}
 
@@ -209,6 +225,7 @@ export function createMessageHandler(deps) {
 		// --- handoff_accept ---
 		if (data.type === "handoff_accept") {
 			setStatus(getStatusForEventType("handoff_accept"));
+			refreshTyping();
 			return;
 		}
 

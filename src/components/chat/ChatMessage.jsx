@@ -108,6 +108,12 @@ const ChatMessage = ({
 	const effectiveMessage = animateTyping
 		? (message || "").slice(0, displayedLength)
 		: message || "";
+	// Recomputed below at line ~208 too — but parseMarkdown needs it now to
+	// suppress structural reshaping (inline lists, status badges, callouts)
+	// while the typewriter is still revealing characters. Once streaming
+	// ends, the useMemo re-runs with streamingNow=false and the full
+	// pipeline produces the final formatted output.
+	const streamingNow = animateTyping && displayedLength < fullLength;
 
 	// Choose rendering path: plain user text, sanitized HTML, parsed markdown, or linkified plain text.
 	const { content, isRichContent } = useMemo(() => {
@@ -126,7 +132,7 @@ const ChatMessage = ({
 		}
 
 		if (containsMarkdown(raw)) {
-			const parsed = parseMarkdown(raw);
+			const parsed = parseMarkdown(raw, { streaming: streamingNow });
 			return { content: sanitizeHtml(parsed), isRichContent: true };
 		}
 
@@ -137,7 +143,7 @@ const ChatMessage = ({
 			return { content: sanitizeHtml(withBreaks), isRichContent: true };
 		}
 		return { content: raw, isRichContent: false };
-	}, [effectiveMessage, isUser]);
+	}, [effectiveMessage, isUser, streamingNow]);
 
 	// IMPORTANT: every hook below this comment must run on every render to keep React's
 	// hook-call order stable. Do not move them under the "no content" early return — that
@@ -204,8 +210,9 @@ const ChatMessage = ({
 
 	const rootClassName = classnames("nfd-ai-chat-message", `nfd-ai-chat-message--${displayType}`);
 
-	// True while the typewriter animation is still revealing characters.
-	const isStreaming = animateTyping && displayedLength < fullLength;
+	// Alias for the value computed earlier; kept here so the existing
+	// downstream usage reads naturally.
+	const isStreaming = streamingNow;
 
 	// Native title attribute for hover tooltip; cheap, accessible, no portal needed.
 	const tooltip = formatRelativeTime(timestamp) || undefined;

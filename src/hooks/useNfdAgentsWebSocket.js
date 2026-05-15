@@ -108,6 +108,13 @@ const useNfdAgentsWebSocket = ({
 	// Wall-clock ms when the next scheduled reconnect will fire — lets the UI render a countdown
 	// instead of just an attempt counter. Null when no reconnect is pending.
 	const [nextRetryAt, setNextRetryAt] = useState(null);
+	// Mirrors navigator.onLine. The browser fires `online`/`offline` events when the OS
+	// network state changes; we surface this as React state so the UI can show an explicit
+	// "You're offline" indicator instead of leaving the user to puzzle out why messages
+	// won't send. Defaults to "online" in SSR / non-browser environments.
+	const [isOffline, setIsOffline] = useState(() => {
+		return typeof navigator !== "undefined" && navigator && navigator.onLine === false;
+	});
 
 	// ---------------------------------------------------------------------------
 	// Refs — wsRef: current WebSocket. reconnectTimeoutRef/Attempts: backoff. configRef: cached config.
@@ -153,12 +160,10 @@ const useNfdAgentsWebSocket = ({
 	const TYPING_TIMEOUT = NFD_AGENTS_WEBSOCKET.TYPING_TIMEOUT;
 	const JWT_REFRESH_BUFFER_MS = NFD_AGENTS_WEBSOCKET.JWT_REFRESH_BUFFER_MS;
 	const JWT_REFRESH_MIN_DELAY_MS = NFD_AGENTS_WEBSOCKET.JWT_REFRESH_MIN_DELAY_MS;
-	const JWT_PROACTIVE_REFRESH_COOLDOWN_MS =
-		NFD_AGENTS_WEBSOCKET.JWT_PROACTIVE_REFRESH_COOLDOWN_MS;
+	const JWT_PROACTIVE_REFRESH_COOLDOWN_MS = NFD_AGENTS_WEBSOCKET.JWT_PROACTIVE_REFRESH_COOLDOWN_MS;
 	const AUTH_REFRESH_COOLDOWN_MS = NFD_AGENTS_WEBSOCKET.AUTH_REFRESH_COOLDOWN_MS;
 	const JWT_EXPIRED_BUFFER_MS = NFD_AGENTS_WEBSOCKET.JWT_EXPIRED_BUFFER_MS;
-	const JWT_PROACTIVE_REFRESH_DEFER_MS =
-		NFD_AGENTS_WEBSOCKET.JWT_PROACTIVE_REFRESH_DEFER_MS;
+	const JWT_PROACTIVE_REFRESH_DEFER_MS = NFD_AGENTS_WEBSOCKET.JWT_PROACTIVE_REFRESH_DEFER_MS;
 
 	// ---------------------------------------------------------------------------
 	// Callbacks passed to messageHandler (persist session/conversation ID to ref + localStorage)
@@ -229,12 +234,14 @@ const useNfdAgentsWebSocket = ({
 			let refetchedForExpiry = false;
 			while (config?.jarvis_jwt) {
 				const expMs = getJwtExpirationMs(config.jarvis_jwt);
-				if (expMs == null) break;
-				if (expMs >= Date.now() + JWT_EXPIRED_BUFFER_MS) break;
+				if (expMs == null) {
+					break;
+				}
+				if (expMs >= Date.now() + JWT_EXPIRED_BUFFER_MS) {
+					break;
+				}
 				if (refetchedForExpiry) {
-					throw new Error(
-						__("Token expired, please refresh the page.", "wp-module-ai-chat")
-					);
+					throw new Error(__("Token expired, please refresh the page.", "wp-module-ai-chat"));
 				}
 				configRef.current = null;
 				configRef.current = await fetchAgentConfig({ configEndpoint, consumer });
@@ -325,6 +332,21 @@ const useNfdAgentsWebSocket = ({
 				setCurrentResponse("");
 			};
 
+			// Refresh the typing-indicator auto-hide timer. Only acts when a timer is
+			// already pending (i.e., an in-flight request) so background events like
+			// session_established before the user sends don't spin up a stray timeout.
+			const bumpTypingTimeout = () => {
+				if (!typingTimeoutRef.current) {
+					return;
+				}
+				clearTimeout(typingTimeoutRef.current);
+				typingTimeoutRef.current = setTimeout(() => {
+					setIsTyping(false);
+					setStatus(null);
+					typingTimeoutRef.current = null;
+				}, TYPING_TIMEOUT);
+			};
+
 			// Wire message handler
 			const handleMessage = createMessageHandler({
 				isStoppedRef,
@@ -337,6 +359,7 @@ const useNfdAgentsWebSocket = ({
 				setError,
 				saveSessionId,
 				saveConversationId,
+				bumpTypingTimeout,
 			});
 
 			ws.onmessage = (event) => {
@@ -370,8 +393,7 @@ const useNfdAgentsWebSocket = ({
 					event.code === WS_CLOSE_AUTH_FAILED || event.code === WS_CLOSE_MISSING_TOKEN;
 				const jwt = configRef.current?.jarvis_jwt;
 				const expMs = jwt ? getJwtExpirationMs(jwt) : null;
-				const tokenExpired =
-					expMs != null && expMs < Date.now() + JWT_EXPIRED_BUFFER_MS;
+				const tokenExpired = expMs != null && expMs < Date.now() + JWT_EXPIRED_BUFFER_MS;
 				if (isAuthClose || tokenExpired) {
 					const now = Date.now();
 					const outsideAuthCooldown =
@@ -387,11 +409,13 @@ const useNfdAgentsWebSocket = ({
 				// Exponential backoff with cap + jitter: reconnect only if not normal close and under max attempts.
 				// Skip auto-reconnect while the device is offline — the online listener will trigger a
 				// reconnect immediately when the network returns, so burning attempts here is wasted.
-				const isOffline =
+				// Read navigator directly (not the React state) because state from this closure may be
+				// stale by the time onclose fires; navigator.onLine is always the live value.
+				const offlineNow =
 					typeof navigator !== "undefined" && navigator && navigator.onLine === false;
 				if (
 					event.code !== 1000 &&
-					!isOffline &&
+					!offlineNow &&
 					reconnectAttempts.current < MAX_RECONNECT_ATTEMPTS
 				) {
 					reconnectAttempts.current++;
@@ -401,8 +425,7 @@ const useNfdAgentsWebSocket = ({
 						MAX_RECONNECT_DELAY,
 						RECONNECT_DELAY * Math.pow(2, reconnectAttempts.current - 1)
 					);
-					const jitter =
-						baseDelay * RECONNECT_JITTER_RATIO * (Math.random() * 2 - 1);
+					const jitter = baseDelay * RECONNECT_JITTER_RATIO * (Math.random() * 2 - 1);
 					const delay = Math.max(0, Math.round(baseDelay + jitter));
 					setNextRetryAt(Date.now() + delay);
 					reconnectTimeoutRef.current = setTimeout(() => {
@@ -537,10 +560,12 @@ const useNfdAgentsWebSocket = ({
 		};
 
 		const handleOnline = () => {
+			setIsOffline(false);
 			tryReconnect();
 		};
 
 		const handleOffline = () => {
+			setIsOffline(true);
 			// Stop scheduled reconnects while we know the network is down — they'll burn
 			// retry budget and leave the user in "failed" by the time the network returns.
 			// The browser will close the socket on its own; we don't force-close here so we
@@ -788,9 +813,7 @@ const useNfdAgentsWebSocket = ({
 			}
 			const contentToResend = target.content || "";
 			const fallbackId = target.fallbackMessageId || null;
-			setMessages((prev) =>
-				prev.filter((m) => m.id !== messageId && m.id !== fallbackId)
-			);
+			setMessages((prev) => prev.filter((m) => m.id !== messageId && m.id !== fallbackId));
 			if (contentToResend) {
 				// Defer so the state removal is committed before sendMessage appends the new pair.
 				setTimeout(() => sendMessage(contentToResend), 0);
@@ -1161,6 +1184,11 @@ const useNfdAgentsWebSocket = ({
 		// reconnect is pending. Consumers can render a countdown by subtracting Date.now().
 		nextRetryAt,
 		manualRetry,
+		// True when the OS reports the device is offline (navigator.onLine === false).
+		// Updated in real time from window `online`/`offline` events. Distinct from
+		// `connectionState === "disconnected"`, which can also occur for non-network reasons
+		// (clean close, initial mount). Use this to render an offline-specific UI.
+		isOffline,
 	};
 };
 

@@ -55,11 +55,76 @@
 	opacity: 0.55;
 }
 
+/* Recovery state — brief inline cue after a reconnecting/failed → connected transition.
+   Fades itself out so it disappears without the user dismissing it. */
+.nfd-ai-chat-typing-indicator--reconnected {
+	animation: nfd-ai-chat-reconnected-fade 3.5s ease forwards;
+}
+
+.nfd-ai-chat-typing-indicator__check {
+	color: var(--nfd-ai-chat-color-success, #2e7d32);
+	flex-shrink: 0;
+}
+
+/* Offline state — persistent until the device comes back online. Muted caution palette
+   (no green, no red): not an error, not success — just informational. */
+.nfd-ai-chat-typing-indicator--offline {
+	opacity: 0.85;
+}
+
+.nfd-ai-chat-typing-indicator__offline-icon {
+	color: var(--nfd-ai-chat-color-grey-dark, #555);
+	flex-shrink: 0;
+}
+
+.nfd-ai-chat-message--assistant:has(.nfd-ai-chat-typing-indicator--offline) .nfd-ai-chat-message__avatar {
+	animation: none;
+	opacity: 0.55;
+}
+
+.nfd-ai-chat-typing-indicator__text--static {
+	color: var(--nfd-ai-chat-color-text-secondary);
+	background: none;
+	-webkit-text-fill-color: var(--nfd-ai-chat-color-text-secondary);
+	animation: none;
+}
+
+@keyframes nfd-ai-chat-reconnected-fade {
+
+	0% {
+		opacity: 0;
+		transform: translateY(2px);
+	}
+
+	10%,
+	75% {
+		opacity: 1;
+		transform: translateY(0);
+	}
+
+	100% {
+		opacity: 0;
+		transform: translateY(-2px);
+	}
+}
+
+.nfd-ai-chat-message--assistant:has(.nfd-ai-chat-typing-indicator--reconnected) .nfd-ai-chat-message__avatar {
+	animation: none;
+	opacity: 0.55;
+}
+
 @media (prefers-reduced-motion: reduce) {
 
 	.nfd-ai-chat-connecting-dots span {
 		animation: none;
 		opacity: 0.6;
+	}
+
+	/* Keep the recovery cue visible without the slide; React still unmounts it after the timeout. */
+	.nfd-ai-chat-typing-indicator--reconnected {
+		animation: none;
+		opacity: 1;
+		transform: none;
 	}
 }
 

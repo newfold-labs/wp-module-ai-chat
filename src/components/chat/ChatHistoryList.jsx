@@ -81,6 +81,13 @@ const getConversationTitle = (conversation) => {
  * @param {Object}   props
  * @param {string}   props.consumer             - Must match useNfdAgentsWebSocket for same consumer
  * @param {Function} props.onSelectConversation
+ * @param {Function} [props.onConversationDeleted] - Fired after an archive entry is
+ *                                                   removed. Receives the deleted
+ *                                                   conversation (sessionId,
+ *                                                   conversationId, messages). Parent
+ *                                                   uses this to reset the active
+ *                                                   chat view when the deleted entry
+ *                                                   was the one currently open.
  * @param {number}   [props.refreshTrigger=0]
  * @param {boolean}  [props.disabled=false]
  * @param {string}   [props.emptyMessage]
@@ -90,6 +97,7 @@ const getConversationTitle = (conversation) => {
 const ChatHistoryList = ({
 	consumer,
 	onSelectConversation,
+	onConversationDeleted,
 	refreshTrigger = 0,
 	disabled = false,
 	emptyMessage = null,
@@ -192,13 +200,17 @@ const ChatHistoryList = ({
 					const filtered = archive.filter((_, i) => i !== index);
 					window.localStorage.setItem(keys.archive, JSON.stringify(filtered));
 				}
+				const deleted = conversations[index];
 				setConversations((prev) => prev.filter((_, i) => i !== index));
+				if (onConversationDeleted && deleted) {
+					onConversationDeleted(deleted);
+				}
 			} catch (err) {
 				// eslint-disable-next-line no-console
 				console.warn("[Chat History] Failed to delete conversation:", err);
 			}
 		},
-		[disabled, keys]
+		[disabled, keys, conversations, onConversationDeleted]
 	);
 
 	// Compute decorated items + bucket grouping in a single pass so render stays simple.

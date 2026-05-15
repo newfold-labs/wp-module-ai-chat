@@ -52,21 +52,29 @@ const ChatInput = ({
 
 	const defaultPlaceholder = __("How can I help you today?", "wp-module-ai-chat");
 
-	// Auto-resize textarea as user types
+	// Auto-resize textarea as user types. When empty, defer to the CSS-defined natural
+	// height instead of pinning to scrollHeight: on first paint, web fonts may not be
+	// fully loaded, so scrollHeight can come back shorter than a single line and lock
+	// the textarea at a clipped height — pushing the placeholder against the row's
+	// `align-items: flex-end` baseline (near the bottom of the input pill). Clearing
+	// the inline height lets CSS (`min-height` + line-height + padding) own the empty state.
 	useEffect(() => {
-		if (textareaRef.current) {
-			textareaRef.current.style.height = "auto";
-			const scrollHeight = textareaRef.current.scrollHeight;
-			const newHeight = Math.min(scrollHeight, INPUT.MAX_HEIGHT);
-			textareaRef.current.style.height = `${newHeight}px`;
-
-			// Only show scrollbar when content actually overflows
-			// This prevents the disabled scrollbar from appearing when empty
-			if (scrollHeight > INPUT.MAX_HEIGHT) {
-				textareaRef.current.style.overflowY = "auto";
-			} else {
-				textareaRef.current.style.overflowY = "hidden";
-			}
+		if (!textareaRef.current) {
+			return;
+		}
+		if (message === "") {
+			textareaRef.current.style.height = "";
+			textareaRef.current.style.overflowY = "hidden";
+			return;
+		}
+		textareaRef.current.style.height = "auto";
+		const scrollHeight = textareaRef.current.scrollHeight;
+		const newHeight = Math.min(scrollHeight, INPUT.MAX_HEIGHT);
+		textareaRef.current.style.height = `${newHeight}px`;
+		if (scrollHeight > INPUT.MAX_HEIGHT) {
+			textareaRef.current.style.overflowY = "auto";
+		} else {
+			textareaRef.current.style.overflowY = "hidden";
 		}
 	}, [message]);
 
