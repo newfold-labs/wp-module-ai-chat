@@ -228,13 +228,22 @@ function trailingByLearnedPattern(items) {
 	if (items.length < INLINE_LIST_MIN_ITEMS) {
 		return null;
 	}
+	// Walk items collecting tails. Stop at the first item that doesn't end with
+	// the tail pattern — that item is either a true list ender (split below) or
+	// a "broken" item whose end-of-tail is buried mid-content (a single
+	// paragraph carrying both a list item AND the closing prose / second list).
 	const tails = [];
+	let stopIdx = items.length;
 	for (let i = 0; i < items.length - 1; i++) {
 		const m = items[i].match(ITEM_TAIL_RE);
 		if (!m) {
-			return null;
+			stopIdx = i;
+			break;
 		}
 		tails.push({ sep: m[1].trim(), word: m[2] });
+	}
+	if (tails.length < INLINE_LIST_MIN_ITEMS - 1) {
+		return null;
 	}
 	const sep = tails[0].sep;
 	if (!tails.every((t) => t.sep === sep)) {
@@ -246,15 +255,38 @@ function trailingByLearnedPattern(items) {
 		`(\\s+${escapeForRegex(sep)}\\s+)(${wordsAlt})\\b\\s+(\\S.*)$`,
 		"i"
 	);
-	const lastItem = items[items.length - 1];
-	const lm = lastItem.match(splitRe);
+
+	if (stopIdx === items.length) {
+		// All but last matched — split the last item at the tail boundary.
+		const lastItem = items[items.length - 1];
+		const lm = lastItem.match(splitRe);
+		if (!lm) {
+			return null;
+		}
+		const wordEnd = lm.index + lm[1].length + lm[2].length;
+		return {
+			items: items.slice(0, -1).concat(lastItem.slice(0, wordEnd).trim()),
+			trailing: lm[3].trim(),
+		};
+	}
+
+	// Interior broken item: split it at the tail, and roll the overflow plus
+	// every remaining item back into a raw "<overflow> - <item> - <item>"
+	// string so the outer normalizer can re-detect it as a second inline list.
+	const brokenItem = items[stopIdx];
+	const lm = brokenItem.match(splitRe);
 	if (!lm) {
 		return null;
 	}
 	const wordEnd = lm.index + lm[1].length + lm[2].length;
+	const cleanBroken = brokenItem.slice(0, wordEnd).trim();
+	const overflow = lm[3].trim();
+	const rest = items.slice(stopIdx + 1);
+	const trailing =
+		rest.length > 0 ? `${overflow} - ${rest.join(" - ")}` : overflow;
 	return {
-		items: items.slice(0, -1).concat(lastItem.slice(0, wordEnd).trim()),
-		trailing: lm[3].trim(),
+		items: items.slice(0, stopIdx).concat(cleanBroken),
+		trailing,
 	};
 }
 
@@ -326,7 +358,12 @@ function assembleOutput(preamble, listLines, trailing) {
 	}
 	parts.push(listLines.join("\n"));
 	if (trailing) {
-		parts.push(trailing);
+		// Trailing may itself be a single-line paragraph holding a second inline
+		// list (e.g. "Tip: - a - b - c"); re-run the normalizer so it gets
+		// bullet-ified instead of rendering as one run-on paragraph. Recursion
+		// terminates because each rewrite replaces inline " - " separators with
+		// newlines, after which the inner-line detector finds nothing to do.
+		parts.push(normalizeInlineLists(trailing));
 	}
 	return parts.join("\n\n");
 }
@@ -348,7 +385,14 @@ function rewriteInlineListLine(line, detection) {
 	const firstIdx = detection.matches[0].index;
 	let preamble = line.slice(0, firstIdx).trimEnd();
 	let rawItems = extractItems(line, detection.matches);
-	if (rawItems.length < INLINE_LIST_MIN_ITEMS) {
+	// Allow a 2-item inline list when every item ends with a URL — this is the
+	// classic "Label: URL" pair shape (e.g. "- Category: <url> - Tag: <url>")
+	// and the URL ending is a strong enough signal to override the 3-item bar.
+	const isUrlPairList =
+		detection.type === "bullet" &&
+		rawItems.length >= 2 &&
+		rawItems.every((it) => URL_AT_END_RE.test(it));
+	if (rawItems.length < INLINE_LIST_MIN_ITEMS && !isUrlPairList) {
 		return line;
 	}
 	// When the backend omits the leading separator (e.g.
@@ -517,6 +561,17 @@ export function parseMarkdown(text, options = {}) {
 		.replace(/<(?![a-zA-Z/])/g, "&lt;")
 		.replace(/(?<![a-zA-Z"])>/g, "&gt;");
 
+	// Stash bare URLs as placeholder tokens so embedded `_` and `*` (e.g. WP
+	// admin URLs with `?taxonomy=product_cat&post_type=product`) don't get
+	// picked up by the bold/italic regexes below. Restored just before the
+	// final bare-URL linkification pass.
+	const urlPlaceholders = [];
+	html = html.replace(/https?:\/\/[^\s<>"]+/g, (url) => {
+		const idx = urlPlaceholders.length;
+		urlPlaceholders.push(url);
+		return `U${idx}`;
+	});
+
 	// Code blocks (``` ... ```) - must be done before other processing
 	html = html.replace(/```(\w*)\n?([\s\S]*?)```/g, (match, lang, code) => {
 		const escapedCode = code.trim().replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -641,6 +696,17 @@ export function parseMarkdown(text, options = {}) {
 
 	// Clean up multiple consecutive <br> tags
 	html = html.replace(/(<br\s*\/?>){2,}/g, "<br>");
+
+	// Restore the URL placeholders stashed before bold/italic processing.
+	// Tokens may appear in href attributes (markdown links) and in plain text
+	// (bare URLs); both get the original URL string back. Bare ones are then
+	// wrapped by linkifyBareUrlsInHtml below.
+	if (urlPlaceholders.length > 0) {
+		html = html.replace(/U(\d+)/g, (_match, idx) => {
+			const stored = urlPlaceholders[Number(idx)];
+			return stored === undefined ? _match : stored;
+		});
+	}
 
 	// Linkify any remaining bare URLs in text content (e.g. inside list items)
 	html = linkifyBareUrlsInHtml(html);
