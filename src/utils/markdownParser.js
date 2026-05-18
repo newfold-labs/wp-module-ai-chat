@@ -531,29 +531,27 @@ export function containsMarkdown(text) {
 /**
  * Parse markdown text to HTML.
  *
- * @param {string} text - The markdown text to parse.
- * @param {object} [options]
- * @param {boolean} [options.streaming=false] - True while the message is
- *   still being typewriter-streamed. Skips the structural transforms
- *   (inline-list reshape, key/value pair fold, HTML-stage enhancers like
- *   status badges and callouts) so the visible text doesn't snap layouts
- *   mid-stream. The text renders as basic markdown during streaming and
- *   re-parses with the full pipeline once the caller passes streaming=false.
+ * Always runs the full pipeline (text-stage enhancers, inline-list reshape,
+ * markdown rules, HTML-stage enhancers). Callers that want a progressive
+ * typewriter effect should render the final HTML once and reveal it in the
+ * DOM via the useTypewriterReveal hook rather than re-parsing partial text.
+ *
+ * @param {string} text             - The markdown text to parse.
+ * @param {object} [options]        - Options object (currently unused; the
+ *                                    previously-supported `streaming` flag is
+ *                                    ignored — full pipeline always runs).
  * @return {string} HTML string.
  */
-export function parseMarkdown(text, options = {}) {
+// eslint-disable-next-line no-unused-vars
+export function parseMarkdown(text, options) {
 	if (!text || typeof text !== "string") {
 		return "";
 	}
-	const { streaming = false } = options;
 
 	// Text-stage enhancers + inline-list reshape run before the line-anchored
-	// markdown rules. Skipped during streaming to avoid the paragraph→list
-	// snap that happens once a detection threshold is crossed.
-	let html = streaming ? text : enhanceText(text);
-	if (!streaming) {
-		html = normalizeInlineLists(html);
-	}
+	// markdown rules so the line-level matchers see normalized input.
+	let html = enhanceText(text);
+	html = normalizeInlineLists(html);
 
 	// Escape HTML entities first (but preserve existing HTML)
 	html = html
@@ -713,9 +711,7 @@ export function parseMarkdown(text, options = {}) {
 
 	// HTML-stage enhancers (status badges, WP-admin paths, callout decoration)
 	// run last, just before the result is handed off for sanitization.
-	if (!streaming) {
-		html = enhanceHtml(html);
-	}
+	html = enhanceHtml(html);
 
 	return html;
 }

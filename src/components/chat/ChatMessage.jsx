@@ -1,7 +1,7 @@
 /**
  * WordPress dependencies
  */
-import { useMemo, useState, useEffect, useRef, useCallback } from "@wordpress/element";
+import { useMemo, useEffect, useRef, useCallback } from "@wordpress/element";
 import { __ } from "@wordpress/i18n";
 import { Icon, pencil, rotateLeft, warning } from "@wordpress/icons";
 
@@ -14,13 +14,10 @@ import { containsMarkdown, parseMarkdown, linkifyUrls } from "../../utils/markdo
 import { unescapeAiResponse } from "../../utils/helpers";
 import { formatRelativeTime } from "../../utils/dateFormat";
 import { attachCodeBlockCopy } from "../../utils/codeBlockCopy";
+import useTypewriterReveal from "../../hooks/useTypewriterReveal";
 import AssistantMessageShell from "../ui/AssistantMessageShell";
 import MessageActions from "../ui/MessageActions";
 import ToolExecutionList from "../ui/ToolExecutionList";
-
-/** Typing animation: chars to reveal per tick, tick interval ms */
-const TYPING_CHARS_PER_TICK = 2;
-const TYPING_TICK_MS = 35;
 
 /**
  * ChatMessage Component
@@ -61,67 +58,22 @@ const ChatMessage = ({
 	const displayType = type === "approval_request" ? "assistant" : type;
 	const isUser = displayType === "user";
 
-	const fullLength = (message || "").length;
-	const [displayedLength, setDisplayedLength] = useState(() => (animateTyping ? 0 : fullLength));
-
-	// When not animating, show full message; when animating, drive displayedLength toward fullLength and clear interval when done
-	const intervalRef = useRef(null);
-	useEffect(() => {
-		if (!animateTyping) {
-			setDisplayedLength(fullLength);
-			return;
-		}
-		intervalRef.current = setInterval(() => {
-			setDisplayedLength((prev) => {
-				if (prev >= fullLength) {
-					if (intervalRef.current) {
-						clearInterval(intervalRef.current);
-						intervalRef.current = null;
-					}
-					return prev;
-				}
-				return Math.min(prev + TYPING_CHARS_PER_TICK, fullLength);
-			});
-		}, TYPING_TICK_MS);
-		return () => {
-			if (intervalRef.current) {
-				clearInterval(intervalRef.current);
-				intervalRef.current = null;
-			}
-		};
-	}, [animateTyping, fullLength]);
-
-	// Notify parent when content grows (for auto-scroll), throttled to avoid excessive updates
-	const lastGrowCallRef = useRef(0);
-	useEffect(() => {
-		if (!onContentGrow || !animateTyping || displayedLength === 0) {
-			return;
-		}
-		const now = Date.now();
-		if (now - lastGrowCallRef.current < 80) {
-			return;
-		}
-		lastGrowCallRef.current = now;
-		onContentGrow();
-	}, [displayedLength, animateTyping, onContentGrow]);
-
-	const effectiveMessage = animateTyping
-		? (message || "").slice(0, displayedLength)
-		: message || "";
-	// Recomputed below at line ~208 too — but parseMarkdown needs it now to
-	// suppress structural reshaping (inline lists, status badges, callouts)
-	// while the typewriter is still revealing characters. Once streaming
-	// ends, the useMemo re-runs with streamingNow=false and the full
-	// pipeline produces the final formatted output.
-	const streamingNow = animateTyping && displayedLength < fullLength;
-
-	// Choose rendering path: plain user text, sanitized HTML, parsed markdown, or linkified plain text.
+	// Parse the full message exactly once and reveal it progressively in the DOM
+	// via useTypewriterReveal. No mid-stream re-parsing means no end-of-stream
+	// reformat snap when inline-list / callout / status-badge detectors finally
+	// cross their thresholds — the final layout is what the user sees from
+	// character one.
+	//
+	// LOAD-BEARING: this useMemo's stable identity for `content` is what keeps
+	// the reveal from restarting on every parent re-render (the typewriter hook
+	// uses `message` as its restart key, but other code paths could end up
+	// re-reading content). Don't drop the memo without checking the hook's
+	// `contentKey` strategy.
 	const { content, isRichContent } = useMemo(() => {
-		if (!effectiveMessage) {
+		const raw = unescapeAiResponse(message || "");
+		if (!raw) {
 			return { content: "", isRichContent: false };
 		}
-
-		const raw = unescapeAiResponse(effectiveMessage);
 
 		if (isUser) {
 			return { content: raw, isRichContent: false };
@@ -132,8 +84,7 @@ const ChatMessage = ({
 		}
 
 		if (containsMarkdown(raw)) {
-			const parsed = parseMarkdown(raw, { streaming: streamingNow });
-			return { content: sanitizeHtml(parsed), isRichContent: true };
+			return { content: sanitizeHtml(parseMarkdown(raw)), isRichContent: true };
 		}
 
 		// Plain text: linkify bare URLs and preserve newlines
@@ -143,7 +94,21 @@ const ChatMessage = ({
 			return { content: sanitizeHtml(withBreaks), isRichContent: true };
 		}
 		return { content: raw, isRichContent: false };
-	}, [effectiveMessage, isUser, streamingNow]);
+	}, [message, isUser]);
+
+	// Auto-scroll throttle — fired from each typewriter tick.
+	const lastGrowCallRef = useRef(0);
+	const handleRevealTick = useCallback(() => {
+		if (!onContentGrow) {
+			return;
+		}
+		const now = Date.now();
+		if (now - lastGrowCallRef.current < 80) {
+			return;
+		}
+		lastGrowCallRef.current = now;
+		onContentGrow();
+	}, [onContentGrow]);
 
 	// IMPORTANT: every hook below this comment must run on every render to keep React's
 	// hook-call order stable. Do not move them under the "no content" early return — that
@@ -193,15 +158,29 @@ const ChatMessage = ({
 		return null;
 	}, [isUser, isFailed, onEdit, onRetry, handleEdit, handleRetry]);
 
-	// Hold a ref to the rich-content node so we can post-process the rendered HTML
-	// (currently: attaching copy buttons to <pre> code blocks).
-	const richContentRef = useRef(null);
+	// Single ref to the visible content node (rich or plain) — the typewriter
+	// hook walks its text nodes to drive the reveal, and the post-render
+	// effect below uses it to wire up the code-block copy buttons.
+	const contentRef = useRef(null);
+
+	const isRevealing = useTypewriterReveal({
+		ref: contentRef,
+		// Use the raw message (small, stable) as the restart key rather than the
+		// multi-KB rendered HTML — keeps the dep compare cheap and the reveal
+		// from restarting on identity-only changes to `content`.
+		contentKey: message,
+		enabled: !isUser && animateTyping && Boolean(content),
+		onTick: handleRevealTick,
+	});
+
 	useEffect(() => {
-		if (!isRichContent || !richContentRef.current) {
+		if (!isRichContent || !contentRef.current || isRevealing) {
 			return undefined;
 		}
-		return attachCodeBlockCopy(richContentRef.current);
-	}, [isRichContent, content]);
+		// Wait until the reveal finishes — code-block <pre> wrappers may sit
+		// behind a `data-nfd-typewriter-pending` block ancestor mid-reveal.
+		return attachCodeBlockCopy(contentRef.current);
+	}, [isRichContent, content, isRevealing]);
 
 	// Early returns may live below — by this point all hooks have been called.
 	if (!content && (!executedTools || executedTools.length === 0)) {
@@ -210,24 +189,20 @@ const ChatMessage = ({
 
 	const rootClassName = classnames("nfd-ai-chat-message", `nfd-ai-chat-message--${displayType}`);
 
-	// Alias for the value computed earlier; kept here so the existing
-	// downstream usage reads naturally.
-	const isStreaming = streamingNow;
-
 	// Native title attribute for hover tooltip; cheap, accessible, no portal needed.
 	const tooltip = formatRelativeTime(timestamp) || undefined;
 
-	// Action bar appears below assistant bubbles only — once content exists and the typewriter
-	// has finished. Skipped while streaming (avoid copying partial text). Users get their own
-	// action set (Edit) when `onEdit` is supplied; rendered via the same MessageActions component.
-	const shouldRenderActions = showActions && Boolean(content) && !isStreaming;
+	// Action bar appears below assistant bubbles only — once content exists and the
+	// typewriter has finished. Skipped while revealing so the user can't copy a
+	// partial message.
+	const shouldRenderActions = showActions && Boolean(content) && !isRevealing;
 
 	const bubbleAndContent = content && (
 		<div className="nfd-ai-chat-message__bubble-wrap">
 			{isRichContent ? (
 				/* content is sanitized in the useMemo above (sanitizeHtml) */
 				<div
-					ref={richContentRef}
+					ref={contentRef}
 					className={classnames(
 						"nfd-ai-chat-message__content",
 						"nfd-ai-chat-message__content--rich",
@@ -238,20 +213,19 @@ const ChatMessage = ({
 				/>
 			) : (
 				<div
+					ref={contentRef}
 					className={classnames(
 						"nfd-ai-chat-message__content",
 						"nfd-ai-chat-message__content--pre-wrap",
 						{
-							"nfd-ai-chat-message__content--streaming": isStreaming,
+							"nfd-ai-chat-message__content--streaming": isRevealing,
 							"nfd-ai-chat-message__content--failed": isFailed,
 						}
 					)}
 					style={{ whiteSpace: "pre-wrap" }}
 					title={tooltip}
 				>
-					{/* While streaming, drop trailing whitespace/newlines so the ::after caret
-					    hugs the last visible character instead of dropping to a blank next line. */}
-					{isStreaming ? content.replace(/\s+$/u, "") : content}
+					{content}
 				</div>
 			)}
 			{isFailed && (
