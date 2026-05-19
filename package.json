@@ -49,6 +49,6 @@
 		"classnames": "^2.5.1",
 		"dompurify": "^3.4.2",
 		"lucide-react": "^1.16.0",
-		"openai": "^4.68.0"
+		"openai": "^6.38.0"
 	}
 }
