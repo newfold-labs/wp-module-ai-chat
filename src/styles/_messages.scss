@@ -636,6 +636,15 @@
 	animation: nfd-ai-chat-cursor-blink 0.85s step-end infinite;
 }
 
+// Block-level elements (paragraphs, lists, headings, code blocks, etc.) inside
+// the bubble are collapsed by the useTypewriterReveal hook until the reveal
+// cursor enters them. This preserves the bubble's grow-as-you-type feel even
+// though the final HTML is rendered up front. The attribute is removed as soon
+// as the first descendant text node receives its first character.
+[data-nfd-typewriter-pending] {
+	display: none !important;
+}
+
 @media (prefers-reduced-motion: reduce) {
 
 	.nfd-ai-chat-message__cursor {
