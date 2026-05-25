@@ -3,7 +3,10 @@
  */
 import { useMemo, useEffect, useRef, useCallback } from "@wordpress/element";
 import { __ } from "@wordpress/i18n";
-import { Icon, pencil, rotateLeft, warning } from "@wordpress/icons";
+// `cautionFilled` (not `warning`) — the `warning` alias was removed in
+// @wordpress/icons v12; consumers on v12+ would otherwise resolve it to `undefined`
+// and crash here via the failed-message render path (cloneElement on undefined).
+import { Icon, pencil, rotateLeft, cautionFilled } from "@wordpress/icons";
 
 /**
  * Internal dependencies
@@ -233,7 +236,7 @@ const ChatMessage = ({
 					className="nfd-ai-chat-message__status nfd-ai-chat-message__status--failed"
 					role="status"
 				>
-					<Icon icon={warning} size={12} />
+					<Icon icon={cautionFilled} size={12} />
 					<span>{__("Couldn't send", "wp-module-ai-chat")}</span>
 					{onRetry && (
 						<button
