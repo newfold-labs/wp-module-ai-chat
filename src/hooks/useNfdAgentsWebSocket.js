@@ -899,6 +899,12 @@ const useNfdAgentsWebSocket = ({
 		setNextRetryAt(null);
 		setIsConnected(false);
 		setIsConnecting(false);
+		// Mirror onclose's safety reset: clear the AI typing indicator and status. Because we
+		// detach onclose above to prevent the orphaned cleanup race, the indicator would
+		// otherwise stay stuck (e.g. on conversation switch while the AI is mid-response)
+		// until the next event or the typing timeout fires.
+		setIsTyping(false);
+		setStatus(null);
 		setConnectionState("disconnected");
 	}, []);
 
