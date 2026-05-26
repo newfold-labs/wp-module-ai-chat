@@ -574,6 +574,13 @@ const useNfdAgentsWebSocket = ({
 				clearTimeout(reconnectTimeoutRef.current);
 				reconnectTimeoutRef.current = null;
 			}
+			// Also cancel any pending proactive JWT refresh — firing it while offline would
+			// disconnect + try to fetchAgentConfig and end up in "failed" with the network
+			// just temporarily down. The next successful connect() reschedules the refresh.
+			if (jwtRefreshTimeoutRef.current) {
+				clearTimeout(jwtRefreshTimeoutRef.current);
+				jwtRefreshTimeoutRef.current = null;
+			}
 			setNextRetryAt(null);
 		};
 
@@ -877,6 +884,13 @@ const useNfdAgentsWebSocket = ({
 			typingTimeoutRef.current = null;
 		}
 		if (wsRef.current) {
+			// Detach handlers before close so the orphaned onclose can't fire later and
+			// clobber state owned by a connect() that was started right after disconnect
+			// (proactive JWT refresh, autoConnect toggle).
+			wsRef.current.onclose = null;
+			wsRef.current.onopen = null;
+			wsRef.current.onerror = null;
+			wsRef.current.onmessage = null;
 			wsRef.current.close(1000, "User disconnected");
 			wsRef.current = null;
 		}
@@ -885,6 +899,12 @@ const useNfdAgentsWebSocket = ({
 		setNextRetryAt(null);
 		setIsConnected(false);
 		setIsConnecting(false);
+		// Mirror onclose's safety reset: clear the AI typing indicator and status. Because we
+		// detach onclose above to prevent the orphaned cleanup race, the indicator would
+		// otherwise stay stuck (e.g. on conversation switch while the AI is mid-response)
+		// until the next event or the typing timeout fires.
+		setIsTyping(false);
+		setStatus(null);
 		setConnectionState("disconnected");
 	}, []);
 
