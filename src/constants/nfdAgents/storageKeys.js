@@ -86,14 +86,19 @@ export const migrateStorageKeys = (oldSiteId, newSiteId, consumer) => {
 
 /**
  * Get localStorage keys for chat history and related data for a given consumer.
- * Includes the cached site ID in the key prefix for multisite isolation.
+ * Includes the site ID in the key prefix for multisite isolation.
  * Must match the keys used in useNfdAgentsWebSocket for the same consumer.
  *
- * @param {string} consumer Consumer identifier (must match useNfdAgentsWebSocket for same surface)
+ * @param {string}      consumer Consumer identifier (must match useNfdAgentsWebSocket for same surface)
+ * @param {string|null} [siteId] Optional explicit site ID. Defaults to the cached value. Pass an
+ *                               explicit value when you need keys for a site other than the
+ *                               currently cached one (e.g. reconciling a mid-session site switch
+ *                               before flipping the cache).
  * @return {{ history: string, conversationId: string, sessionId: string, archive: string }} Object with localStorage key strings for history, conversationId, sessionId, and archive.
  */
-export const getChatHistoryStorageKeys = (consumer) => {
-	const prefix = getKeyPrefix(getSiteId(), consumer);
+export const getChatHistoryStorageKeys = (consumer, siteId) => {
+	const effectiveSiteId = siteId === undefined ? getSiteId() : siteId || "";
+	const prefix = getKeyPrefix(effectiveSiteId, consumer);
 	const keys = {};
 	for (const [name, suffix] of Object.entries(STORAGE_KEY_SUFFIXES)) {
 		keys[name] = `${prefix}-${suffix}`;

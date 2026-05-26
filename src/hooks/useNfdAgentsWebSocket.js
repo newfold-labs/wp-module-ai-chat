@@ -126,6 +126,11 @@ const useNfdAgentsWebSocket = ({
 	const reconnectTimeoutRef = useRef(null);
 	const reconnectAttempts = useRef(0);
 	const configRef = useRef(null);
+	// Site ID this hook loaded its initial chat state for. Captured at mount so that, on
+	// connect(), we can compare against config.site_id and reconcile if the user is actually
+	// on a different site than the cached value at mount. Tracked per-hook so a sibling
+	// consumer's setSiteId() doesn't race-mask the mismatch we need to detect.
+	const initialSiteIdRef = useRef(getSiteId());
 	const jwtRefreshTimeoutRef = useRef(null);
 	const lastProactiveRefreshAt = useRef(null);
 	const justDidProactiveRefreshRef = useRef(false);
@@ -252,13 +257,42 @@ const useNfdAgentsWebSocket = ({
 				}
 			}
 
-			// Cache site ID and migrate old storage keys if needed
-			if (config.site_id) {
-				const currentSiteId = getSiteId();
-				if (currentSiteId !== config.site_id) {
-					setSiteId(config.site_id);
-					migrateStorageKeys(currentSiteId, config.site_id, consumer);
+			// Reconcile site-scoped storage when the cached site ID is wrong for this site.
+			//
+			// localStorage is scoped to origin, not site, so two distinct sites served from the
+			// same origin (e.g. domain.com vs domain.com/website_3ec657) share storage and rely
+			// on the {siteId} prefix in keys to stay isolated. Two cases to handle when the
+			// site ID this hook loaded for differs from what the server confirms:
+			//
+			//   1. Pre-migration (loaded siteId === ""): legacy data lives under no-siteId keys.
+			//      Move it under siteId-scoped keys so it survives future loads. One-time per
+			//      browser per consumer; safe because no other site can own those keys.
+			//
+			//   2. Real site switch (loaded siteId !== ""): the cache was stale at mount and we
+			//      already pulled the wrong site's history into React state. Do NOT migrate —
+			//      that would cross-contaminate sites. Reload state from the new site's keys
+			//      instead, so the persistence effects (which run on the next render with the
+			//      updated STORAGE_KEY) write the correct site's data and don't clobber the new
+			//      site's stored data with the previous site's state.
+			if (config.site_id && initialSiteIdRef.current !== config.site_id) {
+				if (!initialSiteIdRef.current) {
+					migrateStorageKeys("", config.site_id, consumer);
+				} else {
+					const newKeys = getChatHistoryStorageKeys(consumer, config.site_id);
+					const restored = restoreChat(
+						newKeys.history,
+						newKeys.conversationId,
+						newKeys.sessionId
+					);
+					setMessages(restored.messages);
+					setConversationId(restored.conversationId);
+					sessionIdRef.current = restored.sessionId;
 				}
+				initialSiteIdRef.current = config.site_id;
+			}
+			// Sync the shared cache (cheap and idempotent — guarded so a no-op skips the write).
+			if (config.site_id && getSiteId() !== config.site_id) {
+				setSiteId(config.site_id);
 			}
 
 			// Generate or reuse session ID
