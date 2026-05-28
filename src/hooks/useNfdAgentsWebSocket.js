@@ -15,6 +15,7 @@ import {
 	NFD_AGENTS_WEBSOCKET,
 	WS_CLOSE_AUTH_FAILED,
 	WS_CLOSE_MISSING_TOKEN,
+	WS_CLOSE_RATE_LIMITED,
 } from "../constants/nfdAgents/websocket";
 import { getJwtExpirationMs } from "../utils/nfdAgents/jwtUtils";
 import {
@@ -422,6 +423,24 @@ const useNfdAgentsWebSocket = ({
 					wsRef.current = null;
 				}
 
+				// Rate-limited (4008): terminal. Backend already sent the structured
+				// `rate_limited` text frame (rendered by messageHandler via the generic
+				// fallback). Reconnecting would just hit the same limit again until the
+				// reset window passes, so cancel any pending backoff and do not retry.
+				// manualRetry() remains available if the user explicitly chooses to try
+				// after the reset.
+				if (event.code === WS_CLOSE_RATE_LIMITED) {
+					if (reconnectTimeoutRef.current) {
+						clearTimeout(reconnectTimeoutRef.current);
+						reconnectTimeoutRef.current = null;
+					}
+					reconnectAttempts.current = 0;
+					setRetryAttempt(0);
+					setNextRetryAt(null);
+					setConnectionState("rate_limited");
+					return;
+				}
+
 				// Auth failure (4000/4001) or client-side detected token expiry: clear config so next connect fetches fresh JWT (throttled by cooldown)
 				const isAuthClose =
 					event.code === WS_CLOSE_AUTH_FAILED || event.code === WS_CLOSE_MISSING_TOKEN;
@@ -580,6 +599,11 @@ const useNfdAgentsWebSocket = ({
 			if (!isSocketDead()) {
 				return;
 			}
+			// Rate-limited is terminal — online/visibility transitions must not silently
+			// reconnect and re-trigger the gateway limit. User can manualRetry() after reset.
+			if (connectionStateRef.current === "rate_limited") {
+				return;
+			}
 			// Cancel any pending backoff so we attempt immediately rather than waiting.
 			if (reconnectTimeoutRef.current) {
 				clearTimeout(reconnectTimeoutRef.current);
@@ -718,6 +742,22 @@ const useNfdAgentsWebSocket = ({
 		(message, convId = null) => {
 			isStoppedRef.current = false;
 			hasUserMessageRef.current = true;
+
+			// Rate-limited is terminal: appending the user message without auto-connecting
+			// avoids re-hitting the gateway limit on every send. The rate_limited assistant
+			// message above the user input already explains the reset window.
+			if (connectionStateRef.current === "rate_limited" && !convId) {
+				const userMessage = {
+					id: `msg-${Date.now()}`,
+					role: "user",
+					type: "user",
+					content: message,
+					timestamp: new Date(),
+					sessionId: sessionIdRef.current,
+				};
+				setMessages((prev) => [...prev, userMessage]);
+				return;
+			}
 
 			const isFailed =
 				connectionStateRef.current === "failed" ||
