@@ -103,6 +103,13 @@ class NfdAgentsChatConfigController extends WP_REST_Controller {
 							'required'    => true,
 							'enum'        => $this->capabilities_helper->get_valid_consumers(),
 						),
+						'agent_type' => array(
+							'description'       => 'Agent type for the WebSocket connection. Defaults to blu.',
+							'type'              => 'string',
+							'required'          => false,
+							'default'           => 'blu',
+							'sanitize_callback' => 'sanitize_text_field',
+						),
 					),
 				),
 			)
@@ -128,7 +135,7 @@ class NfdAgentsChatConfigController extends WP_REST_Controller {
 		}
 
 		$capabilities = new SiteCapabilities();
-		return $capabilities->get( $capability, false );
+		return $capabilities->get( $capability, false ) || current_user_can( $capability );
 	}
 
 	/**
@@ -160,7 +167,7 @@ class NfdAgentsChatConfigController extends WP_REST_Controller {
 				'jarvis_jwt'  => $jarvis_jwt,
 				'site_url'    => $site_url,
 				'brand_id'    => $this->brand_helper->get_brand_id(),
-				'agent_type'  => 'blu',
+				'agent_type'  => $request->get_param( 'agent_type' ),
 				'site_id'     => SiteHashHelper::short_hash( $site_url, 8 ),
 			)
 		);

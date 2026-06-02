@@ -22,9 +22,12 @@ class ConsumerCapabilitiesHelper {
 	public function __construct( array $consumer_capabilities = array() ) {
 		$this->consumer_capabilities = ! empty( $consumer_capabilities )
 			? $consumer_capabilities
-			: array(
-				'help_center' => 'canAccessAIHelpCenter',
-				'editor_chat' => 'canAccessAIEditorChat',
+			: apply_filters(
+				'nfd_ai_chat_consumers',
+				array(
+					'help_center' => 'canAccessAIHelpCenter',
+					'editor_chat' => 'canAccessAIEditorChat',
+				)
 			);
 	}
 
