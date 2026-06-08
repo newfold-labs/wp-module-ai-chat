@@ -22,7 +22,7 @@ class ConsumerCapabilitiesHelper {
 	private const CONSUMER_AGENT_TYPES = array(
 		'help_center' => 'blu',
 		'editor_chat' => 'blu',
-		'blustore'    => 'blu_store',
+		'blustore'    => 'blu-store',
 	);
 
 	/**
