@@ -367,8 +367,15 @@ const useNfdAgentsWebSocket = ({
 			}
 			sendTrackedPayload(id, entry.payload);
 		}
-		// Prime the response-silence watchdog for a delivered-but-awaited message (e.g. one queued
-		// while offline) so a post-delivery stall still auto-hides the indicator and surfaces Retry.
+		// Keep the response-silence watchdog keyed to the in-flight (oldest) pending message. If
+		// nothing is currently awaited but entries remain (e.g. several queued offline), adopt the
+		// oldest. Then prime the timer so a post-delivery stall still surfaces Retry on that message.
+		if (!awaitingResponseRef.current) {
+			const oldestPending = pendingAcksRef.current.keys().next().value;
+			if (oldestPending !== undefined) {
+				awaitingResponseRef.current = oldestPending;
+			}
+		}
 		if (awaitingResponseRef.current && !typingTimeoutRef.current) {
 			armResponseTimeout();
 		}
@@ -437,9 +444,18 @@ const useNfdAgentsWebSocket = ({
 			if (oldestPending !== undefined) {
 				pendingAcksRef.current.delete(oldestPending);
 			}
+			// Resolve the watchdog for the turn that just completed (clears awaiting + un-flags).
 			resolveAwaitingResponse();
+			// If more messages are still pending (e.g. a burst queued offline), the next-oldest is now
+			// the in-flight turn — promote the watchdog to it and arm so its own stall surfaces Retry
+			// on the correct message.
+			const nextOldest = pendingAcksRef.current.keys().next().value;
+			if (nextOldest !== undefined) {
+				awaitingResponseRef.current = nextOldest;
+				armResponseTimeout();
+			}
 		},
-		[resolveAwaitingResponse]
+		[resolveAwaitingResponse, armResponseTimeout]
 	);
 
 	// ---------------------------------------------------------------------------
@@ -1098,11 +1114,16 @@ const useNfdAgentsWebSocket = ({
 						acknowledged: false,
 					};
 					setMessages((prev) => [...prev, userMessage]);
-					// Mark this as the awaited turn so that, once the reconnect flush delivers it, the
-					// response-silence watchdog can target it for Retry. We do NOT arm the timer here —
-					// there's no connection yet, so it's armed on delivery (flushOutbox) / first
-					// typing_start instead, which prevents a premature fire during the outage.
-					awaitingResponseRef.current = clientMessageId;
+					// The response-silence watchdog tracks ONE in-flight turn — the oldest un-resolved
+					// message, which the backend processes first. Only set it if nothing is already
+					// awaited, so a burst of messages queued while offline keeps the watchdog on the
+					// first (oldest) one; confirmMessageDelivery(null) promotes it to the next-oldest as
+					// each turn completes. We do NOT arm the timer here — there's no connection yet, so
+					// it's armed on delivery (flushOutbox) / first typing_start, avoiding a premature
+					// fire during the outage.
+					if (awaitingResponseRef.current === null) {
+						awaitingResponseRef.current = clientMessageId;
+					}
 					// Queue the user message for delivery; ws.onopen flushes the outbox once open.
 					enqueuePendingAck(clientMessageId, payload);
 				}
