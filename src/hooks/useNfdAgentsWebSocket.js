@@ -408,11 +408,13 @@ const useNfdAgentsWebSocket = ({
 	//   - clientMessageId provided: explicit `message_received` ACK — remove just that entry and
 	//     mark the matching user message acknowledged.
 	//   - clientMessageId null/omitted: implicit confirmation. A turn-completing event (assistant
-	//     content or error) proves the backend received and processed the in-flight message, so
-	//     clear the outbox AND resolve the response wait. This is the backward-compatible path for
-	//     backends that don't emit the ACK. It clears the whole outbox, which assumes a single
-	//     in-flight user turn at a time — the chat UI enforces this by disabling the composer while
-	//     a response is pending, so there is never a second un-acked user message to drop here.
+	//     content or error) proves the backend received and processed ONE in-flight message, so
+	//     clear only the OLDEST pending entry (the backend processes sends in order) and resolve the
+	//     response wait. This is the backward-compatible path for backends that don't emit the ACK.
+	//     Clearing just the oldest — rather than the whole outbox — matters when several messages
+	//     were queued during an offline streak and flushed together on reconnect: each keeps its
+	//     delivery tracking until its OWN turn completes, instead of all being dropped on the first
+	//     response.
 	const confirmMessageDelivery = useCallback(
 		(clientMessageId) => {
 			if (clientMessageId) {
@@ -430,8 +432,10 @@ const useNfdAgentsWebSocket = ({
 				});
 				return;
 			}
-			if (pendingAcksRef.current.size > 0) {
-				pendingAcksRef.current.clear();
+			// Map preserves insertion order, so the first key is the oldest pending send.
+			const oldestPending = pendingAcksRef.current.keys().next().value;
+			if (oldestPending !== undefined) {
+				pendingAcksRef.current.delete(oldestPending);
 			}
 			resolveAwaitingResponse();
 		},

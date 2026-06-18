@@ -39,9 +39,10 @@ in a bounded in-memory **outbox** and recovers them two ways:
   case (recovered via Retry rather than an automatic resend).
 
 For backends that do not emit the ACK, any turn-completing event (assistant content
-or error) implicitly confirms delivery and clears the outbox. This clear assumes a
-single in-flight user turn at a time, which the UI enforces by disabling the composer
-while a response is pending.
+or error) implicitly confirms delivery of one message and clears the **oldest** pending
+outbox entry (the backend processes sends in order). Clearing one-at-a-time — rather
+than the whole outbox — keeps the other messages' tracking intact when several were
+queued during an offline streak and flushed together on reconnect.
 
 System messages and approval (`convId`) sends are **best-effort**: they're sent with a
 `client_message_id` (for backend de-dupe) but are not tracked in the outbox, since they
