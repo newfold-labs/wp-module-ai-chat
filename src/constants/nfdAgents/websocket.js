@@ -58,14 +58,6 @@ export const NFD_AGENTS_WEBSOCKET = {
 	MAX_ACK_RESEND_ATTEMPTS: 3,
 	ACK_RESEND_TTL_MS: 60000,
 	MAX_OUTBOX_SIZE: 50,
-	// Delivery-ACK timeout. The backend ACKs receipt immediately (before processing), so a missing
-	// ACK within this short window means the frame never arrived — resend it. Only armed once the
-	// session has seen at least one ACK, so it never false-fires against a backend that doesn't ACK.
-	ACK_TIMEOUT_MS: 5000,
-	// How often the outbox is swept for ack-timed-out messages while one is outstanding. The sweep
-	// only runs while connected with a pending message and self-stops once the outbox drains (within
-	// one interval of the last ack), so it does not tick indefinitely at idle.
-	ACK_SWEEP_INTERVAL_MS: 2000,
 	WS_CLOSE_AUTH_FAILED,
 	WS_CLOSE_MISSING_TOKEN,
 	WS_CLOSE_RATE_LIMITED,

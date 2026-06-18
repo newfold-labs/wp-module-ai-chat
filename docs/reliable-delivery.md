@@ -22,28 +22,30 @@ WebSocket. Relevant fields:
 ## Reliable delivery (client_message_id + ACK)
 
 Every outbound chat frame carries a per-message `client_message_id`. The backend
-replies with a `message_received` ACK (sent on receipt, before processing) and uses
-the id for de-duplication, so resends are idempotent.
+replies with a `message_received` ACK and uses the id for de-duplication, so resends
+are idempotent.
 
-The client keeps unacknowledged messages in a bounded in-memory **outbox** and
-recovers them three ways:
+The client tracks **user** chat messages (the ones with a bubble + Retry affordance)
+in a bounded in-memory **outbox** and recovers them two ways:
 
-- **Resend on reconnect** — `ws.onopen` flushes the outbox, reusing the same id.
-- **ACK-timeout resend** — while connected, a self-stopping sweep resends a message
-  whose ACK hasn't arrived within `ACK_TIMEOUT_MS`. The full resend loop is gated on
-  having seen at least one ACK this session (feature detection), so a backend that
-  doesn't emit ACKs is never false-failed; before the first ACK, a single bootstrap
-  resend covers a lost first frame.
+- **Resend on reconnect** — `ws.onopen` flushes the outbox, reusing the same id. A
+  message queued while offline is delivered on the next connect; one that was sent but
+  never acknowledged before the socket dropped is resent. Entries that exhaust the
+  resend budget or age past the TTL (and any evicted on overflow) are surfaced for
+  **Retry** rather than dropped silently.
 - **Response-silence watchdog** — if a delivered message produces no response within
   the (activity-bumped) silence window, the message is surfaced for **Retry**. A late
-  reply un-flags it.
-
-Undeliverable messages are marked retryable in the UI (the existing per-message
-Retry affordance) rather than being dropped silently — including on outbox eviction
-and TTL/budget retirement.
+  reply un-flags it. This also covers the "frame lost while the socket stayed open"
+  case (recovered via Retry rather than an automatic resend).
 
 For backends that do not emit the ACK, any turn-completing event (assistant content
-or error) implicitly confirms delivery and clears the outbox.
+or error) implicitly confirms delivery and clears the outbox. This clear assumes a
+single in-flight user turn at a time, which the UI enforces by disabling the composer
+while a response is pending.
+
+System messages and approval (`convId`) sends are **best-effort**: they're sent with a
+`client_message_id` (for backend de-dupe) but are not tracked in the outbox, since they
+have no bubble/Retry affordance.
 
 ## Tuning constants
 
@@ -51,9 +53,7 @@ All in `src/constants/nfdAgents/websocket.js`:
 
 | Constant | Default | Purpose |
 |----------|---------|---------|
-| `MAX_ACK_RESEND_ATTEMPTS` | 3 | Total sends per message (initial + resends) before it's retired as undeliverable. Shared by the reconnect flush and the ack-timeout sweep. |
-| `ACK_RESEND_TTL_MS` | 60000 | How long an already-sent message stays eligible for resend. |
-| `MAX_OUTBOX_SIZE` | 50 | Outbox cap; oldest is evicted (and marked retryable) first. |
-| `ACK_TIMEOUT_MS` | 5000 | Wait for the delivery ACK before resending. Short because the backend ACKs receipt immediately. |
-| `ACK_SWEEP_INTERVAL_MS` | 2000 | Sweep cadence while a message is outstanding (runs only when connected with pending work). |
+| `MAX_ACK_RESEND_ATTEMPTS` | 3 | Total sends per message (initial + resends) before it's retired as undeliverable (surfaced for Retry). |
+| `ACK_RESEND_TTL_MS` | 60000 | How long an already-sent message stays eligible for resend on reconnect. |
+| `MAX_OUTBOX_SIZE` | 50 | Outbox cap; oldest is evicted (and surfaced for Retry) first. |
 | `TYPING_TIMEOUT` | 180000 | Response-silence window; bumped by every inbound event, so it only fires on genuine silence. |

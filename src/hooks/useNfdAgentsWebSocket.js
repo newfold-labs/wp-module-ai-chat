@@ -158,19 +158,15 @@ const useNfdAgentsWebSocket = ({
 	const messagesRef = useRef([]);
 	const connectionStateRef = useRef(connectionState);
 	const prevConnectionStateRef = useRef(connectionState);
-	// Outbox of messages awaiting a backend `message_received` ACK, keyed by client_message_id.
-	// Each entry: { payload, createdAt, attempts, lastSentAt }. Entries are resent on reconnect
-	// (flushOutbox) and on ack-timeout (the sweep), and removed on explicit ACK or when the turn
-	// completes (see confirmMessageDelivery).
+	// Outbox of USER chat messages awaiting a backend `message_received` ACK, keyed by
+	// client_message_id. Each entry: { payload, createdAt, attempts }. Entries are resent on
+	// reconnect (flushOutbox) and removed on explicit ACK or when the turn completes
+	// (confirmMessageDelivery). Only user messages (which have a bubble + Retry affordance) are
+	// tracked here; system/approval sends are best-effort (see sendSystemMessage / the convId path).
 	const pendingAcksRef = useRef(new Map());
-	// True once we've seen any `message_received` ACK this session. Gates the ack-timeout sweep so
-	// it never resends/false-fails against a backend that doesn't emit ACKs (feature detection).
-	const hasSeenAckRef = useRef(false);
-	// setInterval handle for the ack-timeout sweep; non-null only while it's actively watching.
-	const ackSweepRef = useRef(null);
 	// client_message_id of the user message currently awaiting an assistant response, or null.
-	// Drives the response-silence retry affordance (Part 2). Distinct from the outbox, which tracks
-	// delivery: a message can be ACKed (out of the outbox) yet still awaiting a response.
+	// Drives the response-silence retry affordance. Distinct from the outbox, which tracks delivery:
+	// a message can be ACKed (out of the outbox) yet still awaiting a response.
 	const awaitingResponseRef = useRef(null);
 
 	const MAX_RECONNECT_ATTEMPTS = NFD_AGENTS_WEBSOCKET.MAX_RECONNECT_ATTEMPTS;
@@ -187,8 +183,6 @@ const useNfdAgentsWebSocket = ({
 	const MAX_ACK_RESEND_ATTEMPTS = NFD_AGENTS_WEBSOCKET.MAX_ACK_RESEND_ATTEMPTS;
 	const ACK_RESEND_TTL_MS = NFD_AGENTS_WEBSOCKET.ACK_RESEND_TTL_MS;
 	const MAX_OUTBOX_SIZE = NFD_AGENTS_WEBSOCKET.MAX_OUTBOX_SIZE;
-	const ACK_TIMEOUT_MS = NFD_AGENTS_WEBSOCKET.ACK_TIMEOUT_MS;
-	const ACK_SWEEP_INTERVAL_MS = NFD_AGENTS_WEBSOCKET.ACK_SWEEP_INTERVAL_MS;
 
 	// ---------------------------------------------------------------------------
 	// Callbacks passed to messageHandler (persist session/conversation ID to ref + localStorage)
@@ -275,22 +269,15 @@ const useNfdAgentsWebSocket = ({
 				// send can't vanish without the user being able to recover it.
 				retireOutboxEntry(oldestKey);
 			}
-			// lastSentAt: wall-clock of the last successful send (null until first delivery). Drives
-			// the ack-timeout sweep (resend if no ACK within ACK_TIMEOUT_MS of lastSentAt).
-			outbox.set(clientMessageId, {
-				payload,
-				createdAt: Date.now(),
-				attempts: 0,
-				lastSentAt: null,
-			});
+			outbox.set(clientMessageId, { payload, createdAt: Date.now(), attempts: 0 });
 		},
 		[MAX_OUTBOX_SIZE, retireOutboxEntry]
 	);
 
 	// Send a payload over the open socket and count it against the message's resend budget.
-	// attempts/lastSentAt are updated only on a successful send: a throwing send (rare on an OPEN
-	// socket, but possible if it half-closes) must not silently burn the budget and strand the
-	// message undelivered. Returns whether the frame was handed to the socket.
+	// attempts is incremented only on a successful send: a throwing send (rare on an OPEN socket,
+	// but possible if it half-closes) must not silently burn the budget and strand the message
+	// undelivered. Returns whether the frame was handed to the socket.
 	const sendTrackedPayload = useCallback((clientMessageId, payload) => {
 		const ws = wsRef.current;
 		if (!ws || ws.readyState !== WebSocket.OPEN) {
@@ -301,7 +288,6 @@ const useNfdAgentsWebSocket = ({
 			const entry = pendingAcksRef.current.get(clientMessageId);
 			if (entry) {
 				entry.attempts += 1;
-				entry.lastSentAt = Date.now();
 			}
 			return true;
 		} catch (err) {
@@ -355,80 +341,6 @@ const useNfdAgentsWebSocket = ({
 		typingTimeoutRef.current = setTimeout(onResponseSilenceTimeout, TYPING_TIMEOUT);
 	}, [onResponseSilenceTimeout, TYPING_TIMEOUT]);
 
-	const stopAckSweep = useCallback(() => {
-		if (ackSweepRef.current) {
-			clearInterval(ackSweepRef.current);
-			ackSweepRef.current = null;
-		}
-	}, []);
-
-	// One sweep of the outbox for ack-timed-out messages. Resends any whose ACK hasn't arrived
-	// within ACK_TIMEOUT_MS of their last send; once the per-message budget is spent, gives up and
-	// flags the message for retry. Self-stops when there's nothing to watch or the socket isn't
-	// open (a reconnect's flush restarts it), so the interval never runs at idle.
-	//
-	// Iterates a snapshot of the entries so the in-loop deletes/resends can't interact with Map
-	// iteration order.
-	const ackSweepTick = useCallback(() => {
-		const outbox = pendingAcksRef.current;
-		const ws = wsRef.current;
-		if (outbox.size === 0 || !ws || ws.readyState !== WebSocket.OPEN) {
-			stopAckSweep();
-			return;
-		}
-		const now = Date.now();
-		for (const [id, entry] of Array.from(outbox.entries())) {
-			// Not yet sent (queued while offline): the reconnect flush owns its first delivery.
-			if (entry.attempts === 0 || entry.lastSentAt === null) {
-				continue;
-			}
-			if (now - entry.lastSentAt < ACK_TIMEOUT_MS) {
-				continue;
-			}
-
-			// Bootstrap (no ACK observed yet this session): we don't yet know whether the backend
-			// emits ACKs, so we can't run the full resend/fail loop without risking false resends on
-			// a non-ACK backend. Do a SINGLE resend, and only while the turn has shown no activity
-			// (awaitingResponseRef still points here — any inbound frame clears it). This closes the
-			// first-lost-frame gap: a dropped first frame is recovered in ~ACK_TIMEOUT_MS instead of
-			// waiting for a reconnect or the long response-silence window. After that one attempt (or
-			// once activity is seen) we stop tracking delivery for this entry — a true no-response is
-			// handled by the response-silence watchdog, not here.
-			if (!hasSeenAckRef.current) {
-				if (entry.attempts < 2 && awaitingResponseRef.current === id) {
-					sendTrackedPayload(id, entry.payload);
-				} else {
-					outbox.delete(id);
-				}
-				continue;
-			}
-
-			// ACK-capable backend: full resend budget, then retire as undeliverable.
-			if (entry.attempts >= MAX_ACK_RESEND_ATTEMPTS) {
-				retireOutboxEntry(id);
-				continue;
-			}
-			sendTrackedPayload(id, entry.payload);
-		}
-	}, [
-		ACK_TIMEOUT_MS,
-		MAX_ACK_RESEND_ATTEMPTS,
-		sendTrackedPayload,
-		retireOutboxEntry,
-		stopAckSweep,
-	]);
-
-	// Start the ack-timeout sweep if not already running. The sweep runs for ACK-capable and
-	// not-yet-confirmed backends alike; the per-tick logic (see ackSweepTick) gates the actual
-	// resend/fail behavior on hasSeenAckRef so a non-ACK backend gets at most a single bootstrap
-	// resend and is never false-failed.
-	const startAckSweep = useCallback(() => {
-		if (ackSweepRef.current) {
-			return;
-		}
-		ackSweepRef.current = setInterval(ackSweepTick, ACK_SWEEP_INTERVAL_MS);
-	}, [ackSweepTick, ACK_SWEEP_INTERVAL_MS]);
-
 	// Resend any outbox entries over the open socket. Called from ws.onopen so messages
 	// that were queued while disconnected — or sent but never acknowledged before the socket
 	// dropped — are delivered once the connection is (re)established. Resends reuse the original
@@ -455,8 +367,6 @@ const useNfdAgentsWebSocket = ({
 			}
 			sendTrackedPayload(id, entry.payload);
 		}
-		// Resume ack-timeout watching for anything still outstanding after the flush.
-		startAckSweep();
 		// Prime the response-silence watchdog for a delivered-but-awaited message (e.g. one queued
 		// while offline) so a post-delivery stall still auto-hides the indicator and surfaces Retry.
 		if (awaitingResponseRef.current && !typingTimeoutRef.current) {
@@ -467,7 +377,6 @@ const useNfdAgentsWebSocket = ({
 		MAX_ACK_RESEND_ATTEMPTS,
 		sendTrackedPayload,
 		retireOutboxEntry,
-		startAckSweep,
 		armResponseTimeout,
 	]);
 
@@ -496,17 +405,17 @@ const useNfdAgentsWebSocket = ({
 	}, []);
 
 	// Clear delivered messages from the outbox.
-	//   - clientMessageId provided: explicit `message_received` ACK — remove just that entry, mark
-	//     the matching user message acknowledged, and record that this backend emits ACKs (which
-	//     arms the ack-timeout sweep for subsequent sends via hasSeenAckRef).
+	//   - clientMessageId provided: explicit `message_received` ACK — remove just that entry and
+	//     mark the matching user message acknowledged.
 	//   - clientMessageId null/omitted: implicit confirmation. A turn-completing event (assistant
-	//     content or error) proves the backend received and processed the in-flight message(s), so
-	//     clear the whole outbox AND resolve the response wait. This is also the backward-compatible
-	//     path for backends that don't emit the ACK.
+	//     content or error) proves the backend received and processed the in-flight message, so
+	//     clear the outbox AND resolve the response wait. This is the backward-compatible path for
+	//     backends that don't emit the ACK. It clears the whole outbox, which assumes a single
+	//     in-flight user turn at a time — the chat UI enforces this by disabling the composer while
+	//     a response is pending, so there is never a second un-acked user message to drop here.
 	const confirmMessageDelivery = useCallback(
 		(clientMessageId) => {
 			if (clientMessageId) {
-				hasSeenAckRef.current = true;
 				pendingAcksRef.current.delete(clientMessageId);
 				setMessages((prev) => {
 					let changed = false;
@@ -699,12 +608,6 @@ const useNfdAgentsWebSocket = ({
 				hasUserMessageRef.current = messagesRef.current && messagesRef.current.length > 0;
 				isStoppedRef.current = false;
 				setCurrentResponse("");
-				// ACK capability is a per-connection property: reset detection on each new socket so a
-				// reconnect that lands on a different backend (e.g. ACK-capable UAT -> non-ACK prod
-				// within one hook lifetime) re-detects from scratch. Otherwise the sweep would treat
-				// the new backend as ACK-capable and could false-fail messages it will never ACK. The
-				// "bootstrap resend then stop tracking" path stays correct until the first ACK arrives.
-				hasSeenAckRef.current = false;
 				// Deliver anything queued while disconnected and resend any message that was
 				// sent but never acknowledged before the socket dropped.
 				flushOutbox();
@@ -763,9 +666,6 @@ const useNfdAgentsWebSocket = ({
 				if (wsRef.current === ws) {
 					wsRef.current = null;
 				}
-				// Stop the ack-timeout sweep deterministically on close so a single connection owns
-				// it (the reconnect's flushOutbox restarts it). The outbox is preserved for resend.
-				stopAckSweep();
 
 				// Rate-limited (4008): terminal. Backend already sent the structured
 				// `rate_limited` text frame (rendered by messageHandler via the generic
@@ -871,7 +771,6 @@ const useNfdAgentsWebSocket = ({
 		confirmMessageDelivery,
 		resolveAwaitingResponse,
 		flushOutbox,
-		stopAckSweep,
 		onResponseSilenceTimeout,
 		armResponseTimeout,
 		MAX_RECONNECT_ATTEMPTS,
@@ -915,10 +814,6 @@ const useNfdAgentsWebSocket = ({
 			if (jwtRefreshTimeoutRef.current) {
 				clearTimeout(jwtRefreshTimeoutRef.current);
 				jwtRefreshTimeoutRef.current = null;
-			}
-			if (ackSweepRef.current) {
-				clearInterval(ackSweepRef.current);
-				ackSweepRef.current = null;
 			}
 			// Also clear the response-silence watchdog so it can't fire setState after unmount.
 			if (typingTimeoutRef.current) {
@@ -1204,9 +1099,10 @@ const useNfdAgentsWebSocket = ({
 					// there's no connection yet, so it's armed on delivery (flushOutbox) / first
 					// typing_start instead, which prevents a premature fire during the outage.
 					awaitingResponseRef.current = clientMessageId;
+					// Queue the user message for delivery; ws.onopen flushes the outbox once open.
+					enqueuePendingAck(clientMessageId, payload);
 				}
-				// Queue for delivery and trigger connect; ws.onopen flushes the outbox once open.
-				enqueuePendingAck(clientMessageId, payload);
+				// convId (approval) sends aren't queued — they're best-effort over a live socket.
 				connect();
 				return;
 			}
@@ -1232,21 +1128,20 @@ const useNfdAgentsWebSocket = ({
 					clearTimeout(typingTimeoutRef.current);
 				}
 				typingTimeoutRef.current = setTimeout(onResponseSilenceTimeout, TYPING_TIMEOUT);
-			}
 
-			// Track for ACK/resend, then send. sendTrackedPayload counts the send against the
-			// resend cap (MAX_ACK_RESEND_ATTEMPTS) only if the frame actually goes out. Start the
-			// ack-timeout sweep so a lost (un-ACKed) frame is resent without waiting for a reconnect.
-			enqueuePendingAck(clientMessageId, payload);
+				// Track the user message for ACK + resend-on-reconnect, then send.
+				enqueuePendingAck(clientMessageId, payload);
+			}
+			// sendTrackedPayload sends the frame; for a convId (approval) send there's no outbox
+			// entry, so it simply isn't tracked/resent (best-effort) — the outbox holds only user
+			// messages, which are the ones with a bubble + Retry affordance.
 			sendTrackedPayload(clientMessageId, payload);
-			startAckSweep();
 		},
 		[
 			conversationId,
 			connect,
 			enqueuePendingAck,
 			sendTrackedPayload,
-			startAckSweep,
 			onResponseSilenceTimeout,
 			getConnectionFailedFallbackMessage,
 			MAX_RECONNECT_ATTEMPTS,
@@ -1311,18 +1206,12 @@ const useNfdAgentsWebSocket = ({
 			// indicator here (awaitingResponseRef is left untouched / null).
 			typingTimeoutRef.current = setTimeout(onResponseSilenceTimeout, TYPING_TIMEOUT);
 
-			enqueuePendingAck(clientMessageId, payload);
+			// Best-effort over the live socket — system messages have no bubble/Retry affordance, so
+			// they aren't tracked in the outbox (no resend-on-reconnect). client_message_id is still
+			// sent for backend de-dupe.
 			sendTrackedPayload(clientMessageId, payload);
-			startAckSweep();
 		},
-		[
-			conversationId,
-			enqueuePendingAck,
-			sendTrackedPayload,
-			startAckSweep,
-			onResponseSilenceTimeout,
-			TYPING_TIMEOUT,
-		]
+		[conversationId, sendTrackedPayload, onResponseSilenceTimeout, TYPING_TIMEOUT]
 	);
 
 	// ---------------------------------------------------------------------------
@@ -1344,12 +1233,8 @@ const useNfdAgentsWebSocket = ({
 			clearTimeout(typingTimeoutRef.current);
 			typingTimeoutRef.current = null;
 		}
-		// Stop the ack-timeout sweep and the response watchdog. The outbox itself is intentionally
-		// preserved so a reconnect can resend; the reconnect flush restarts the sweep.
-		if (ackSweepRef.current) {
-			clearInterval(ackSweepRef.current);
-			ackSweepRef.current = null;
-		}
+		// Stop watching for a response. The outbox itself is intentionally preserved so a reconnect
+		// can resend its entries.
 		awaitingResponseRef.current = null;
 		if (wsRef.current) {
 			// Detach handlers before close so the orphaned onclose can't fire later and
@@ -1414,12 +1299,8 @@ const useNfdAgentsWebSocket = ({
 			setStatus(null);
 			setCurrentResponse("");
 			// Switching conversation context: drop pending sends so they aren't resent into the
-			// newly loaded conversation, and tear down the sweep + response watchdog.
+			// newly loaded conversation, and stop watching for a response.
 			pendingAcksRef.current.clear();
-			if (ackSweepRef.current) {
-				clearInterval(ackSweepRef.current);
-				ackSweepRef.current = null;
-			}
 			awaitingResponseRef.current = null;
 
 			// If we're connected, persist the loaded session/conv and reconnect so the backend uses them
@@ -1448,13 +1329,9 @@ const useNfdAgentsWebSocket = ({
 		setStatus(null);
 		setCurrentResponse("");
 		// The in-flight message was already sent; the user chose to abandon this turn, so drop any
-		// pending entries to avoid resending a stopped message, stop the sweep, and stop awaiting
-		// a response (no retry should be surfaced for an intentionally stopped turn).
+		// pending entries to avoid resending a stopped message, and stop awaiting a response (no
+		// retry should be surfaced for an intentionally stopped turn).
 		pendingAcksRef.current.clear();
-		if (ackSweepRef.current) {
-			clearInterval(ackSweepRef.current);
-			ackSweepRef.current = null;
-		}
 		awaitingResponseRef.current = null;
 		if (typingTimeoutRef.current) {
 			clearTimeout(typingTimeoutRef.current);
@@ -1558,10 +1435,6 @@ const useNfdAgentsWebSocket = ({
 			hasUserMessageRef.current = false;
 			isStoppedRef.current = false;
 			pendingAcksRef.current.clear();
-			if (ackSweepRef.current) {
-				clearInterval(ackSweepRef.current);
-				ackSweepRef.current = null;
-			}
 			awaitingResponseRef.current = null;
 
 			if (typingTimeoutRef.current) {
