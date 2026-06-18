@@ -49,6 +49,22 @@ export const generateSessionId = () => {
 };
 
 /**
+ * Generate a unique per-message client ID.
+ *
+ * Sent to the backend as `client_message_id` on every outbound chat frame. The
+ * backend echoes it back in a `message_received` ACK and uses it for de-duplication,
+ * so the SAME id must be reused when a message is resent (e.g. after a reconnect) to
+ * stay idempotent. Mirrors generateSessionId for environments without crypto.randomUUID.
+ *
+ * @return {string} New client message ID
+ */
+export const generateClientMessageId = () => {
+	return crypto.randomUUID
+		? crypto.randomUUID()
+		: `${Date.now()}-${Math.random().toString(36).substring(2, 15)}`;
+};
+
+/**
  * Debounce function
  *
  * @param {Function} func - Function to debounce
@@ -71,5 +87,6 @@ export default {
 	unescapeAiResponse,
 	simpleHash,
 	generateSessionId,
+	generateClientMessageId,
 	debounce,
 };

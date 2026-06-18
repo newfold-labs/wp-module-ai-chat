@@ -81,6 +81,9 @@ const collectBlockAncestors = (node, root) => {
  *
  * Blocks with no text after them (trailing orphans) attach to the last text
  * node so they reveal when the message finishes.
+ * @param root
+ * @param textNodes
+ * @param nodeAncestors
  */
 const attachOrphanBlocks = (root, textNodes, nodeAncestors) => {
 	if (textNodes.length === 0) {
@@ -135,16 +138,16 @@ const prefersReducedMotion = () => {
  * (inline-list detection, key/value fold, status badges) crossed its threshold
  * partway through the animation.
  *
- * @param {Object}      params
- * @param {Object}      params.ref        Ref to the container holding the formatted HTML.
- * @param {string}      params.contentKey Stable identity for the content — when it
- *                                        changes, the reveal restarts. Prefer a small,
- *                                        stable value (e.g. the raw message string or
- *                                        a message id) over the rendered HTML.
- * @param {boolean}     params.enabled    When false, no animation runs and content stays
- *                                        fully visible.
- * @param {Function}    [params.onTick]   Optional callback after each reveal tick (e.g.
- *                                        for auto-scroll).
+ * @param {Object}   params
+ * @param {Object}   params.ref        Ref to the container holding the formatted HTML.
+ * @param {string}   params.contentKey Stable identity for the content — when it
+ *                                     changes, the reveal restarts. Prefer a small,
+ *                                     stable value (e.g. the raw message string or
+ *                                     a message id) over the rendered HTML.
+ * @param {boolean}  params.enabled    When false, no animation runs and content stays
+ *                                     fully visible.
+ * @param {Function} [params.onTick]   Optional callback after each reveal tick (e.g.
+ *                                     for auto-scroll).
  * @return {boolean} `true` while the reveal is in progress, `false` otherwise.
  */
 const useTypewriterReveal = ({ ref, contentKey, enabled, onTick }) => {
