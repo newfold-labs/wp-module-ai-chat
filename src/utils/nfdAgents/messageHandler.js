@@ -109,6 +109,10 @@ const addAssistantMsg = (setMessages, content, idSuffix = "") => {
  * @param {Function} [deps.notifyResponseActivity] Optional. callback() — called on the first turn
  *                                                 activity frame so the response-silence watchdog
  *                                                 stops tracking a message that did get a response.
+ * @param {Function} [deps.armResponseTimeout]     Optional. callback() — (re)starts the
+ *                                                 response-silence watchdog; invoked on typing_start
+ *                                                 when no timer is active so queued-then-delivered
+ *                                                 sends get the same silence handling as live sends.
  * @param {Function} [deps.bumpTypingTimeout]      Optional. Refreshes the typing-indicator
  *                                                 auto-hide timer when an active timeout exists.
  *                                                 Called for every progress event so a long tool
@@ -130,6 +134,7 @@ export function createMessageHandler(deps) {
 		saveConversationId,
 		confirmMessageDelivery,
 		notifyResponseActivity,
+		armResponseTimeout,
 		bumpTypingTimeout,
 	} = deps;
 
@@ -180,7 +185,13 @@ export function createMessageHandler(deps) {
 		if (data.type === "typing_start") {
 			setIsTyping(true);
 			setStatus(getStatusForEventType("typing_start"));
-			clearTypingTimeout(typingTimeoutRef);
+			// Ensure the response-silence watchdog is running so a stall AFTER typing_start still
+			// auto-hides the indicator and surfaces Retry. Online sends armed it at send time; sends
+			// queued while offline (delivered later by the reconnect flush) may not have — start one
+			// here if none is active. A running timer is left as-is (it'll be bumped by later events).
+			if (!typingTimeoutRef.current && typeof armResponseTimeout === "function") {
+				armResponseTimeout();
+			}
 			return;
 		}
 

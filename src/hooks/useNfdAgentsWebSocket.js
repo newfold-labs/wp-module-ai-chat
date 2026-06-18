@@ -327,6 +327,34 @@ const useNfdAgentsWebSocket = ({
 		[markMessageRetryable]
 	);
 
+	// Response-silence watchdog callback. Fires when no assistant event has arrived for the silence
+	// window (TYPING_TIMEOUT). Hides the typing indicator and, if a user message is still awaiting a
+	// response, surfaces Retry on it. It is bumped by every inbound event (bumpTypingTimeout) and
+	// (re)started on the first typing_start, so it only fires on genuine silence — not during long
+	// tool calls. We do NOT clear awaitingResponseRef here, so a late reply can still un-flag the
+	// message (resolveAwaitingResponse).
+	const onResponseSilenceTimeout = useCallback(() => {
+		typingTimeoutRef.current = null;
+		const awaiting = awaitingResponseRef.current;
+		if (awaiting) {
+			flagMessageNeedsRetry(awaiting);
+			return;
+		}
+		setIsTyping(false);
+		setStatus(null);
+	}, [flagMessageNeedsRetry]);
+
+	// (Re)arm the response-silence watchdog. Used by the send path, by flushOutbox when delivering a
+	// queued message, and by the message handler on the first typing_start — so the watchdog is
+	// consistently active for online sends AND for sends that were queued while offline and
+	// delivered later by the reconnect flush (which otherwise never armed it).
+	const armResponseTimeout = useCallback(() => {
+		if (typingTimeoutRef.current) {
+			clearTimeout(typingTimeoutRef.current);
+		}
+		typingTimeoutRef.current = setTimeout(onResponseSilenceTimeout, TYPING_TIMEOUT);
+	}, [onResponseSilenceTimeout, TYPING_TIMEOUT]);
+
 	const stopAckSweep = useCallback(() => {
 		if (ackSweepRef.current) {
 			clearInterval(ackSweepRef.current);
@@ -406,12 +434,18 @@ const useNfdAgentsWebSocket = ({
 		});
 		// Resume ack-timeout watching for anything still outstanding after the flush.
 		startAckSweep();
+		// Prime the response-silence watchdog for a delivered-but-awaited message (e.g. one queued
+		// while offline) so a post-delivery stall still auto-hides the indicator and surfaces Retry.
+		if (awaitingResponseRef.current && !typingTimeoutRef.current) {
+			armResponseTimeout();
+		}
 	}, [
 		ACK_RESEND_TTL_MS,
 		MAX_ACK_RESEND_ATTEMPTS,
 		sendTrackedPayload,
 		retireOutboxEntry,
 		startAckSweep,
+		armResponseTimeout,
 	]);
 
 	// Resolve the outstanding response wait: stop watching the awaited message and undo any
@@ -471,23 +505,6 @@ const useNfdAgentsWebSocket = ({
 		},
 		[resolveAwaitingResponse]
 	);
-
-	// Response-silence watchdog callback. Fires when no assistant event has arrived for the silence
-	// window (TYPING_TIMEOUT). Hides the typing indicator and, if a user message is still awaiting a
-	// response, surfaces the Retry affordance on it. It is bumped by every inbound event (see
-	// bumpTypingTimeout), so it only fires on genuine silence — not during long tool calls. We do
-	// NOT clear awaitingResponseRef here, so a late reply can still un-flag the message
-	// (confirmMessageDelivery(null)).
-	const onResponseSilenceTimeout = useCallback(() => {
-		typingTimeoutRef.current = null;
-		const awaiting = awaitingResponseRef.current;
-		if (awaiting) {
-			flagMessageNeedsRetry(awaiting);
-			return;
-		}
-		setIsTyping(false);
-		setStatus(null);
-	}, [flagMessageNeedsRetry]);
 
 	// ---------------------------------------------------------------------------
 	// connect() — Idempotent. Fetches config (cached), ensures site ID + storage migration,
@@ -689,6 +706,7 @@ const useNfdAgentsWebSocket = ({
 				saveConversationId,
 				confirmMessageDelivery,
 				notifyResponseActivity: resolveAwaitingResponse,
+				armResponseTimeout,
 				bumpTypingTimeout,
 			});
 
@@ -826,6 +844,7 @@ const useNfdAgentsWebSocket = ({
 		flushOutbox,
 		stopAckSweep,
 		onResponseSilenceTimeout,
+		armResponseTimeout,
 		MAX_RECONNECT_ATTEMPTS,
 		RECONNECT_DELAY,
 		MAX_RECONNECT_DELAY,
@@ -871,6 +890,11 @@ const useNfdAgentsWebSocket = ({
 			if (ackSweepRef.current) {
 				clearInterval(ackSweepRef.current);
 				ackSweepRef.current = null;
+			}
+			// Also clear the response-silence watchdog so it can't fire setState after unmount.
+			if (typingTimeoutRef.current) {
+				clearTimeout(typingTimeoutRef.current);
+				typingTimeoutRef.current = null;
 			}
 		};
 	}, []);
@@ -1146,6 +1170,11 @@ const useNfdAgentsWebSocket = ({
 						acknowledged: false,
 					};
 					setMessages((prev) => [...prev, userMessage]);
+					// Mark this as the awaited turn so that, once the reconnect flush delivers it, the
+					// response-silence watchdog can target it for Retry. We do NOT arm the timer here —
+					// there's no connection yet, so it's armed on delivery (flushOutbox) / first
+					// typing_start instead, which prevents a premature fire during the outage.
+					awaitingResponseRef.current = clientMessageId;
 				}
 				// Queue for delivery and trigger connect; ws.onopen flushes the outbox once open.
 				enqueuePendingAck(clientMessageId, payload);
