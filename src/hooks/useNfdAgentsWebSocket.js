@@ -366,6 +366,9 @@ const useNfdAgentsWebSocket = ({
 	// within ACK_TIMEOUT_MS of their last send; once the per-message budget is spent, gives up and
 	// flags the message for retry. Self-stops when there's nothing to watch or the socket isn't
 	// open (a reconnect's flush restarts it), so the interval never runs at idle.
+	//
+	// Iterates a snapshot of the entries so the in-loop deletes/resends can't interact with Map
+	// iteration order.
 	const ackSweepTick = useCallback(() => {
 		const outbox = pendingAcksRef.current;
 		const ws = wsRef.current;
@@ -374,21 +377,39 @@ const useNfdAgentsWebSocket = ({
 			return;
 		}
 		const now = Date.now();
-		outbox.forEach((entry, id) => {
+		for (const [id, entry] of Array.from(outbox.entries())) {
 			// Not yet sent (queued while offline): the reconnect flush owns its first delivery.
 			if (entry.attempts === 0 || entry.lastSentAt === null) {
-				return;
+				continue;
 			}
 			if (now - entry.lastSentAt < ACK_TIMEOUT_MS) {
-				return;
+				continue;
 			}
+
+			// Bootstrap (no ACK observed yet this session): we don't yet know whether the backend
+			// emits ACKs, so we can't run the full resend/fail loop without risking false resends on
+			// a non-ACK backend. Do a SINGLE resend, and only while the turn has shown no activity
+			// (awaitingResponseRef still points here — any inbound frame clears it). This closes the
+			// first-lost-frame gap: a dropped first frame is recovered in ~ACK_TIMEOUT_MS instead of
+			// waiting for a reconnect or the long response-silence window. After that one attempt (or
+			// once activity is seen) we stop tracking delivery for this entry — a true no-response is
+			// handled by the response-silence watchdog, not here.
+			if (!hasSeenAckRef.current) {
+				if (entry.attempts < 2 && awaitingResponseRef.current === id) {
+					sendTrackedPayload(id, entry.payload);
+				} else {
+					outbox.delete(id);
+				}
+				continue;
+			}
+
+			// ACK-capable backend: full resend budget, then retire as undeliverable.
 			if (entry.attempts >= MAX_ACK_RESEND_ATTEMPTS) {
-				// Budget spent with no ACK — retire as undeliverable (surfaces Retry + clears state).
 				retireOutboxEntry(id);
-				return;
+				continue;
 			}
 			sendTrackedPayload(id, entry.payload);
-		});
+		}
 	}, [
 		ACK_TIMEOUT_MS,
 		MAX_ACK_RESEND_ATTEMPTS,
@@ -397,11 +418,12 @@ const useNfdAgentsWebSocket = ({
 		stopAckSweep,
 	]);
 
-	// Start the ack-timeout sweep if not already running. Gated on hasSeenAckRef so we never resend
-	// or false-fail against a backend that doesn't emit message_received — the sweep is armed only
-	// after we've observed at least one ACK this session (feature detection).
+	// Start the ack-timeout sweep if not already running. The sweep runs for ACK-capable and
+	// not-yet-confirmed backends alike; the per-tick logic (see ackSweepTick) gates the actual
+	// resend/fail behavior on hasSeenAckRef so a non-ACK backend gets at most a single bootstrap
+	// resend and is never false-failed.
 	const startAckSweep = useCallback(() => {
-		if (ackSweepRef.current || !hasSeenAckRef.current) {
+		if (ackSweepRef.current) {
 			return;
 		}
 		ackSweepRef.current = setInterval(ackSweepTick, ACK_SWEEP_INTERVAL_MS);
@@ -417,7 +439,8 @@ const useNfdAgentsWebSocket = ({
 			return;
 		}
 		const now = Date.now();
-		pendingAcksRef.current.forEach((entry, id) => {
+		// Snapshot the entries so the in-loop retire/resend can't interact with Map iteration order.
+		for (const [id, entry] of Array.from(pendingAcksRef.current.entries())) {
 			// Retire only messages we've already tried at least once: budget exhausted, or aged
 			// past the TTL. A message queued while offline (attempts === 0) must still get its
 			// first send no matter how long the outage lasted — so it is never TTL-dropped before
@@ -428,10 +451,10 @@ const useNfdAgentsWebSocket = ({
 				// Retire as undeliverable rather than dropping silently — surfaces Retry and clears
 				// the awaited-turn state if this was the in-flight message.
 				retireOutboxEntry(id);
-				return;
+				continue;
 			}
 			sendTrackedPayload(id, entry.payload);
-		});
+		}
 		// Resume ack-timeout watching for anything still outstanding after the flush.
 		startAckSweep();
 		// Prime the response-silence watchdog for a delivered-but-awaited message (e.g. one queued
