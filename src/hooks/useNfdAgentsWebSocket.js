@@ -699,6 +699,12 @@ const useNfdAgentsWebSocket = ({
 				hasUserMessageRef.current = messagesRef.current && messagesRef.current.length > 0;
 				isStoppedRef.current = false;
 				setCurrentResponse("");
+				// ACK capability is a per-connection property: reset detection on each new socket so a
+				// reconnect that lands on a different backend (e.g. ACK-capable UAT -> non-ACK prod
+				// within one hook lifetime) re-detects from scratch. Otherwise the sweep would treat
+				// the new backend as ACK-capable and could false-fail messages it will never ACK. The
+				// "bootstrap resend then stop tracking" path stays correct until the first ACK arrives.
+				hasSeenAckRef.current = false;
 				// Deliver anything queued while disconnected and resend any message that was
 				// sent but never acknowledged before the socket dropped.
 				flushOutbox();
