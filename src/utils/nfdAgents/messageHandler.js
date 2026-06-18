@@ -106,6 +106,9 @@ const addAssistantMsg = (setMessages, content, idSuffix = "") => {
  *                                                 removes an outbox entry on an explicit
  *                                                 `message_received` ACK (id given), or clears the
  *                                                 whole outbox on implicit turn completion (null).
+ * @param {Function} [deps.notifyResponseActivity] Optional. callback() — called on the first turn
+ *                                                 activity frame so the response-silence watchdog
+ *                                                 stops tracking a message that did get a response.
  * @param {Function} [deps.bumpTypingTimeout]      Optional. Refreshes the typing-indicator
  *                                                 auto-hide timer when an active timeout exists.
  *                                                 Called for every progress event so a long tool
@@ -126,6 +129,7 @@ export function createMessageHandler(deps) {
 		saveSessionId,
 		saveConversationId,
 		confirmMessageDelivery,
+		notifyResponseActivity,
 		bumpTypingTimeout,
 	} = deps;
 
@@ -161,6 +165,15 @@ export function createMessageHandler(deps) {
 				saveSessionId(data.session_id);
 			}
 			return;
+		}
+
+		// Any frame past this point is turn activity for the in-flight message (typing, tool calls,
+		// content, an approval request, or an error) — proof the backend is responding. Resolve the
+		// response wait so the silence watchdog never flags a turn that did get answered, including
+		// responses (e.g. approval requests) that arrive without a preceding typing_start. Runs
+		// before the per-type branches, several of which return early.
+		if (typeof notifyResponseActivity === "function") {
+			notifyResponseActivity();
 		}
 
 		// --- typing_start ---
