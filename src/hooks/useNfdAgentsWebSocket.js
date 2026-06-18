@@ -220,6 +220,47 @@ const useNfdAgentsWebSocket = ({
 	// Reliable delivery (client_message_id + ACK)
 	// ---------------------------------------------------------------------------
 
+	// Surface the per-message Retry affordance on a user message (by client_message_id). Pure
+	// state mutation; reuses the existing "failed" treatment (retryFailedMessage re-sends the
+	// content as a fresh message, which the backend won't de-dupe).
+	const markMessageRetryable = useCallback((clientMessageId) => {
+		setMessages((prev) => {
+			let changed = false;
+			const next = prev.map((m) => {
+				if (m.clientMessageId === clientMessageId && m.status !== "failed") {
+					changed = true;
+					return { ...m, status: "failed" };
+				}
+				return m;
+			});
+			return changed ? next : prev;
+		});
+	}, []);
+
+	// Retire a pending message that cannot be delivered: surface Retry, drop it from the outbox,
+	// and — if it was the message we were actively awaiting a response for — stop awaiting and clear
+	// the typing indicator/watchdog (that turn is dead). This is the single path for EVERY
+	// otherwise-silent drop site (ack-timeout exhaustion, reconnect TTL/budget retirement, and
+	// full-outbox eviction), so none of them discard a message without UI feedback. Keying the
+	// typing/await teardown on the awaited id means evicting an OLD queued message never disturbs
+	// the in-flight turn.
+	const retireOutboxEntry = useCallback(
+		(clientMessageId) => {
+			markMessageRetryable(clientMessageId);
+			if (awaitingResponseRef.current === clientMessageId) {
+				awaitingResponseRef.current = null;
+				setIsTyping(false);
+				setStatus(null);
+				if (typingTimeoutRef.current) {
+					clearTimeout(typingTimeoutRef.current);
+					typingTimeoutRef.current = null;
+				}
+			}
+			pendingAcksRef.current.delete(clientMessageId);
+		},
+		[markMessageRetryable]
+	);
+
 	// Add a sent/queued message to the outbox so it can be resent until acknowledged.
 	// Bounds the outbox so a long disconnected streak can't grow it without limit.
 	const enqueuePendingAck = useCallback(
@@ -230,7 +271,9 @@ const useNfdAgentsWebSocket = ({
 			const outbox = pendingAcksRef.current;
 			while (outbox.size >= MAX_OUTBOX_SIZE && outbox.size > 0) {
 				const oldestKey = outbox.keys().next().value;
-				outbox.delete(oldestKey);
+				// Don't silently discard an evicted message — surface Retry so a queued-but-undelivered
+				// send can't vanish without the user being able to recover it.
+				retireOutboxEntry(oldestKey);
 			}
 			// lastSentAt: wall-clock of the last successful send (null until first delivery). Drives
 			// the ack-timeout sweep (resend if no ACK within ACK_TIMEOUT_MS of lastSentAt).
@@ -241,7 +284,7 @@ const useNfdAgentsWebSocket = ({
 				lastSentAt: null,
 			});
 		},
-		[MAX_OUTBOX_SIZE]
+		[MAX_OUTBOX_SIZE, retireOutboxEntry]
 	);
 
 	// Send a payload over the open socket and count it against the message's resend budget.
@@ -267,29 +310,22 @@ const useNfdAgentsWebSocket = ({
 		}
 	}, []);
 
-	// Flag a user message (by client_message_id) as needing a retry — used when delivery can't be
-	// confirmed after the resend budget is spent, and when the response-silence watchdog fires.
-	// Reuses the existing "failed" + Retry treatment; retryFailedMessage re-sends the content as a
-	// fresh message (new id), which the backend will not de-dupe.
-	const flagMessageNeedsRetry = useCallback((clientMessageId) => {
-		setMessages((prev) => {
-			let changed = false;
-			const next = prev.map((m) => {
-				if (m.clientMessageId === clientMessageId && m.status !== "failed") {
-					changed = true;
-					return { ...m, status: "failed" };
-				}
-				return m;
-			});
-			return changed ? next : prev;
-		});
-		setIsTyping(false);
-		setStatus(null);
-		if (typingTimeoutRef.current) {
-			clearTimeout(typingTimeoutRef.current);
-			typingTimeoutRef.current = null;
-		}
-	}, []);
+	// Response-silence failure: the message WAS delivered but the turn produced no response within
+	// the silence window. Surface Retry and hide the indicator, but deliberately leave
+	// awaitingResponseRef set so a late reply can still un-flag it (resolveAwaitingResponse). Unlike
+	// retireOutboxEntry, it does not touch the outbox (the entry was already cleared on ACK / turn).
+	const flagMessageNeedsRetry = useCallback(
+		(clientMessageId) => {
+			markMessageRetryable(clientMessageId);
+			setIsTyping(false);
+			setStatus(null);
+			if (typingTimeoutRef.current) {
+				clearTimeout(typingTimeoutRef.current);
+				typingTimeoutRef.current = null;
+			}
+		},
+		[markMessageRetryable]
+	);
 
 	const stopAckSweep = useCallback(() => {
 		if (ackSweepRef.current) {
@@ -319,11 +355,8 @@ const useNfdAgentsWebSocket = ({
 				return;
 			}
 			if (entry.attempts >= MAX_ACK_RESEND_ATTEMPTS) {
-				flagMessageNeedsRetry(id);
-				if (awaitingResponseRef.current === id) {
-					awaitingResponseRef.current = null;
-				}
-				outbox.delete(id);
+				// Budget spent with no ACK — retire as undeliverable (surfaces Retry + clears state).
+				retireOutboxEntry(id);
 				return;
 			}
 			sendTrackedPayload(id, entry.payload);
@@ -332,7 +365,7 @@ const useNfdAgentsWebSocket = ({
 		ACK_TIMEOUT_MS,
 		MAX_ACK_RESEND_ATTEMPTS,
 		sendTrackedPayload,
-		flagMessageNeedsRetry,
+		retireOutboxEntry,
 		stopAckSweep,
 	]);
 
@@ -364,14 +397,22 @@ const useNfdAgentsWebSocket = ({
 			const exhausted = entry.attempts >= MAX_ACK_RESEND_ATTEMPTS;
 			const expired = entry.attempts > 0 && now - entry.createdAt > ACK_RESEND_TTL_MS;
 			if (exhausted || expired) {
-				pendingAcksRef.current.delete(id);
+				// Retire as undeliverable rather than dropping silently — surfaces Retry and clears
+				// the awaited-turn state if this was the in-flight message.
+				retireOutboxEntry(id);
 				return;
 			}
 			sendTrackedPayload(id, entry.payload);
 		});
 		// Resume ack-timeout watching for anything still outstanding after the flush.
 		startAckSweep();
-	}, [ACK_RESEND_TTL_MS, MAX_ACK_RESEND_ATTEMPTS, sendTrackedPayload, startAckSweep]);
+	}, [
+		ACK_RESEND_TTL_MS,
+		MAX_ACK_RESEND_ATTEMPTS,
+		sendTrackedPayload,
+		retireOutboxEntry,
+		startAckSweep,
+	]);
 
 	// Resolve the outstanding response wait: stop watching the awaited message and undo any
 	// response-silence retry flag we may have surfaced on it (the response did arrive after all —
