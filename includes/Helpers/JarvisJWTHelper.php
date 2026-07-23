@@ -34,7 +34,7 @@ class JarvisJWTHelper {
 	 * @return string|WP_Error Token string or error.
 	 */
 	public function get_token() {
-		if ( defined( 'NFD_AI_CHAT_JARVIS_DEBUG_TOKEN' ) && '' !== NFD_AI_CHAT_JARVIS_DEBUG_TOKEN ) {
+		if ( $this->is_using_debug_token() ) {
 			return NFD_AI_CHAT_JARVIS_DEBUG_TOKEN;
 		}
 
@@ -83,6 +83,23 @@ class JarvisJWTHelper {
 		set_transient( self::TRANSIENT_KEY_JWT, $token, $ttl );
 
 		return $token;
+	}
+
+	/**
+	 * Whether the module is running on a local debug token (NFD_AI_CHAT_JARVIS_DEBUG_TOKEN
+	 * defined and non-empty in wp-config.php), rather than a Hiive-issued token.
+	 *
+	 * The config controller surfaces this to the frontend so it can skip its client-side
+	 * JWT-expiry handling for hand-crafted local test tokens that may be expired or have
+	 * no `exp` claim. This is a local-development affordance only: it can never be true in
+	 * production because it requires the constant to be defined in wp-config.php, and the
+	 * frontend expiry checks it gates are not a security control (the WebSocket gateway
+	 * remains the authority that validates the token).
+	 *
+	 * @return bool True when a debug token is in use.
+	 */
+	public function is_using_debug_token() {
+		return defined( 'NFD_AI_CHAT_JARVIS_DEBUG_TOKEN' ) && '' !== NFD_AI_CHAT_JARVIS_DEBUG_TOKEN;
 	}
 
 	/**

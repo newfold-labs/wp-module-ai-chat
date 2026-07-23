@@ -34,7 +34,7 @@ import {
 	clearChatStorage,
 	hasMeaningfulUserMessage,
 } from "../utils/nfdAgents/storage";
-import { generateSessionId } from "../utils/helpers";
+import { generateSessionId, generateClientMessageId } from "../utils/helpers";
 
 /**
  * useNfdAgentsWebSocket Hook
@@ -158,6 +158,16 @@ const useNfdAgentsWebSocket = ({
 	const messagesRef = useRef([]);
 	const connectionStateRef = useRef(connectionState);
 	const prevConnectionStateRef = useRef(connectionState);
+	// Outbox of USER chat messages awaiting a backend `message_received` ACK, keyed by
+	// client_message_id. Each entry: { payload, createdAt, attempts }. Entries are resent on
+	// reconnect (flushOutbox) and removed on explicit ACK or when the turn completes
+	// (confirmMessageDelivery). Only user messages (which have a bubble + Retry affordance) are
+	// tracked here; system/approval sends are best-effort (see sendSystemMessage / the convId path).
+	const pendingAcksRef = useRef(new Map());
+	// client_message_id of the user message currently awaiting an assistant response, or null.
+	// Drives the response-silence retry affordance. Distinct from the outbox, which tracks delivery:
+	// a message can be ACKed (out of the outbox) yet still awaiting a response.
+	const awaitingResponseRef = useRef(null);
 
 	const MAX_RECONNECT_ATTEMPTS = NFD_AGENTS_WEBSOCKET.MAX_RECONNECT_ATTEMPTS;
 	const RECONNECT_DELAY = NFD_AGENTS_WEBSOCKET.RECONNECT_DELAY;
@@ -170,6 +180,9 @@ const useNfdAgentsWebSocket = ({
 	const AUTH_REFRESH_COOLDOWN_MS = NFD_AGENTS_WEBSOCKET.AUTH_REFRESH_COOLDOWN_MS;
 	const JWT_EXPIRED_BUFFER_MS = NFD_AGENTS_WEBSOCKET.JWT_EXPIRED_BUFFER_MS;
 	const JWT_PROACTIVE_REFRESH_DEFER_MS = NFD_AGENTS_WEBSOCKET.JWT_PROACTIVE_REFRESH_DEFER_MS;
+	const MAX_ACK_RESEND_ATTEMPTS = NFD_AGENTS_WEBSOCKET.MAX_ACK_RESEND_ATTEMPTS;
+	const ACK_RESEND_TTL_MS = NFD_AGENTS_WEBSOCKET.ACK_RESEND_TTL_MS;
+	const MAX_OUTBOX_SIZE = NFD_AGENTS_WEBSOCKET.MAX_OUTBOX_SIZE;
 
 	// ---------------------------------------------------------------------------
 	// Callbacks passed to messageHandler (persist session/conversation ID to ref + localStorage)
@@ -180,7 +193,6 @@ const useNfdAgentsWebSocket = ({
 			try {
 				localStorage.setItem(SESSION_STORAGE_KEY, sid);
 			} catch (err) {
-				// eslint-disable-next-line no-console
 				console.warn("[AI Chat] Failed to save session ID to localStorage:", err);
 			}
 		},
@@ -192,11 +204,258 @@ const useNfdAgentsWebSocket = ({
 			try {
 				localStorage.setItem(CONVERSATION_STORAGE_KEY, cid);
 			} catch (err) {
-				// eslint-disable-next-line no-console
 				console.warn("[AI Chat] Failed to save conversation ID to localStorage:", err);
 			}
 		},
 		[CONVERSATION_STORAGE_KEY]
+	);
+
+	// ---------------------------------------------------------------------------
+	// Reliable delivery (client_message_id + ACK)
+	// ---------------------------------------------------------------------------
+
+	// Surface the per-message Retry affordance on a user message (by client_message_id). Pure
+	// state mutation; reuses the existing "failed" treatment (retryFailedMessage re-sends the
+	// content as a fresh message, which the backend won't de-dupe).
+	const markMessageRetryable = useCallback((clientMessageId) => {
+		setMessages((prev) => {
+			let changed = false;
+			const next = prev.map((m) => {
+				if (m.clientMessageId === clientMessageId && m.status !== "failed") {
+					changed = true;
+					return { ...m, status: "failed" };
+				}
+				return m;
+			});
+			return changed ? next : prev;
+		});
+	}, []);
+
+	// Retire a pending message that cannot be delivered: surface Retry, drop it from the outbox,
+	// and — if it was the message we were actively awaiting a response for — stop awaiting and clear
+	// the typing indicator/watchdog (that turn is dead). This is the single path for EVERY
+	// otherwise-silent drop site (ack-timeout exhaustion, reconnect TTL/budget retirement, and
+	// full-outbox eviction), so none of them discard a message without UI feedback. Keying the
+	// typing/await teardown on the awaited id means evicting an OLD queued message never disturbs
+	// the in-flight turn.
+	const retireOutboxEntry = useCallback(
+		(clientMessageId) => {
+			markMessageRetryable(clientMessageId);
+			if (awaitingResponseRef.current === clientMessageId) {
+				awaitingResponseRef.current = null;
+				setIsTyping(false);
+				setStatus(null);
+				if (typingTimeoutRef.current) {
+					clearTimeout(typingTimeoutRef.current);
+					typingTimeoutRef.current = null;
+				}
+			}
+			pendingAcksRef.current.delete(clientMessageId);
+		},
+		[markMessageRetryable]
+	);
+
+	// Add a sent/queued message to the outbox so it can be resent until acknowledged.
+	// Bounds the outbox so a long disconnected streak can't grow it without limit.
+	const enqueuePendingAck = useCallback(
+		(clientMessageId, payload) => {
+			if (!clientMessageId) {
+				return;
+			}
+			const outbox = pendingAcksRef.current;
+			while (outbox.size >= MAX_OUTBOX_SIZE && outbox.size > 0) {
+				const oldestKey = outbox.keys().next().value;
+				// Don't silently discard an evicted message — surface Retry so a queued-but-undelivered
+				// send can't vanish without the user being able to recover it.
+				retireOutboxEntry(oldestKey);
+			}
+			outbox.set(clientMessageId, { payload, createdAt: Date.now(), attempts: 0 });
+		},
+		[MAX_OUTBOX_SIZE, retireOutboxEntry]
+	);
+
+	// Send a payload over the open socket and count it against the message's resend budget.
+	// attempts is incremented only on a successful send: a throwing send (rare on an OPEN socket,
+	// but possible if it half-closes) must not silently burn the budget and strand the message
+	// undelivered. Returns whether the frame was handed to the socket.
+	const sendTrackedPayload = useCallback((clientMessageId, payload) => {
+		const ws = wsRef.current;
+		if (!ws || ws.readyState !== WebSocket.OPEN) {
+			return false;
+		}
+		try {
+			ws.send(JSON.stringify(payload));
+			const entry = pendingAcksRef.current.get(clientMessageId);
+			if (entry) {
+				entry.attempts += 1;
+			}
+			return true;
+		} catch (err) {
+			console.warn("[AI Chat] Failed to send message:", err);
+			return false;
+		}
+	}, []);
+
+	// Response-silence failure: the message WAS delivered but the turn produced no response within
+	// the silence window. Surface Retry and hide the indicator, but deliberately leave
+	// awaitingResponseRef set so a late reply can still un-flag it (resolveAwaitingResponse). Unlike
+	// retireOutboxEntry, it does not touch the outbox (the entry was already cleared on ACK / turn).
+	const flagMessageNeedsRetry = useCallback(
+		(clientMessageId) => {
+			markMessageRetryable(clientMessageId);
+			setIsTyping(false);
+			setStatus(null);
+			if (typingTimeoutRef.current) {
+				clearTimeout(typingTimeoutRef.current);
+				typingTimeoutRef.current = null;
+			}
+		},
+		[markMessageRetryable]
+	);
+
+	// Response-silence watchdog callback. Fires when no assistant event has arrived for the silence
+	// window (TYPING_TIMEOUT). Hides the typing indicator and, if a user message is still awaiting a
+	// response, surfaces Retry on it. It is bumped by every inbound event (bumpTypingTimeout) and
+	// (re)started on the first typing_start, so it only fires on genuine silence — not during long
+	// tool calls. We do NOT clear awaitingResponseRef here, so a late reply can still un-flag the
+	// message (resolveAwaitingResponse).
+	const onResponseSilenceTimeout = useCallback(() => {
+		typingTimeoutRef.current = null;
+		const awaiting = awaitingResponseRef.current;
+		if (awaiting) {
+			flagMessageNeedsRetry(awaiting);
+			return;
+		}
+		setIsTyping(false);
+		setStatus(null);
+	}, [flagMessageNeedsRetry]);
+
+	// (Re)arm the response-silence watchdog. Used by the send path, by flushOutbox when delivering a
+	// queued message, and by the message handler on the first typing_start — so the watchdog is
+	// consistently active for online sends AND for sends that were queued while offline and
+	// delivered later by the reconnect flush (which otherwise never armed it).
+	const armResponseTimeout = useCallback(() => {
+		if (typingTimeoutRef.current) {
+			clearTimeout(typingTimeoutRef.current);
+		}
+		typingTimeoutRef.current = setTimeout(onResponseSilenceTimeout, TYPING_TIMEOUT);
+	}, [onResponseSilenceTimeout, TYPING_TIMEOUT]);
+
+	// Resend any outbox entries over the open socket. Called from ws.onopen so messages
+	// that were queued while disconnected — or sent but never acknowledged before the socket
+	// dropped — are delivered once the connection is (re)established. Resends reuse the original
+	// client_message_id, so a backend with durable de-dupe enabled will not double-process them.
+	const flushOutbox = useCallback(() => {
+		const ws = wsRef.current;
+		if (!ws || ws.readyState !== WebSocket.OPEN) {
+			return;
+		}
+		const now = Date.now();
+		// Snapshot the entries so the in-loop retire/resend can't interact with Map iteration order.
+		for (const [id, entry] of Array.from(pendingAcksRef.current.entries())) {
+			// Retire only messages we've already tried at least once: budget exhausted, or aged
+			// past the TTL. A message queued while offline (attempts === 0) must still get its
+			// first send no matter how long the outage lasted — so it is never TTL-dropped before
+			// it has ever left the client.
+			const exhausted = entry.attempts >= MAX_ACK_RESEND_ATTEMPTS;
+			const expired = entry.attempts > 0 && now - entry.createdAt > ACK_RESEND_TTL_MS;
+			if (exhausted || expired) {
+				// Retire as undeliverable rather than dropping silently — surfaces Retry and clears
+				// the awaited-turn state if this was the in-flight message.
+				retireOutboxEntry(id);
+				continue;
+			}
+			sendTrackedPayload(id, entry.payload);
+		}
+		// Keep the response-silence watchdog keyed to the in-flight (oldest) pending message. If
+		// nothing is currently awaited but entries remain (e.g. several queued offline), adopt the
+		// oldest. Then prime the timer so a post-delivery stall still surfaces Retry on that message.
+		if (!awaitingResponseRef.current) {
+			const oldestPending = pendingAcksRef.current.keys().next().value;
+			if (oldestPending !== undefined) {
+				awaitingResponseRef.current = oldestPending;
+			}
+		}
+		if (awaitingResponseRef.current && !typingTimeoutRef.current) {
+			armResponseTimeout();
+		}
+	}, [
+		ACK_RESEND_TTL_MS,
+		MAX_ACK_RESEND_ATTEMPTS,
+		sendTrackedPayload,
+		retireOutboxEntry,
+		armResponseTimeout,
+	]);
+
+	// Resolve the outstanding response wait: stop watching the awaited message and undo any
+	// response-silence retry flag we may have surfaced on it (the response did arrive after all —
+	// the late-reply race). Called both on the FIRST sign of turn activity (so a turn that responds
+	// without a typing_start, e.g. an approval request, is never falsely flagged) and on turn
+	// completion. No-op when nothing is awaiting.
+	const resolveAwaitingResponse = useCallback(() => {
+		const awaiting = awaitingResponseRef.current;
+		if (!awaiting) {
+			return;
+		}
+		awaitingResponseRef.current = null;
+		setMessages((prev) => {
+			let changed = false;
+			const next = prev.map((m) => {
+				if (m.clientMessageId === awaiting && m.status === "failed") {
+					changed = true;
+					return { ...m, status: undefined };
+				}
+				return m;
+			});
+			return changed ? next : prev;
+		});
+	}, []);
+
+	// Clear delivered messages from the outbox.
+	//   - clientMessageId provided: explicit `message_received` ACK — remove just that entry and
+	//     mark the matching user message acknowledged.
+	//   - clientMessageId null/omitted: implicit confirmation. A turn-completing event (assistant
+	//     content or error) proves the backend received and processed ONE in-flight message, so
+	//     clear only the OLDEST pending entry (the backend processes sends in order) and resolve the
+	//     response wait. This is the backward-compatible path for backends that don't emit the ACK.
+	//     Clearing just the oldest — rather than the whole outbox — matters when several messages
+	//     were queued during an offline streak and flushed together on reconnect: each keeps its
+	//     delivery tracking until its OWN turn completes, instead of all being dropped on the first
+	//     response.
+	const confirmMessageDelivery = useCallback(
+		(clientMessageId) => {
+			if (clientMessageId) {
+				pendingAcksRef.current.delete(clientMessageId);
+				setMessages((prev) => {
+					let changed = false;
+					const next = prev.map((m) => {
+						if (m.clientMessageId === clientMessageId && !m.acknowledged) {
+							changed = true;
+							return { ...m, acknowledged: true };
+						}
+						return m;
+					});
+					return changed ? next : prev;
+				});
+				return;
+			}
+			// Map preserves insertion order, so the first key is the oldest pending send.
+			const oldestPending = pendingAcksRef.current.keys().next().value;
+			if (oldestPending !== undefined) {
+				pendingAcksRef.current.delete(oldestPending);
+			}
+			// Resolve the watchdog for the turn that just completed (clears awaiting + un-flags).
+			resolveAwaitingResponse();
+			// If more messages are still pending (e.g. a burst queued offline), the next-oldest is now
+			// the in-flight turn — promote the watchdog to it and arm so its own stall surfaces Retry
+			// on the correct message.
+			const nextOldest = pendingAcksRef.current.keys().next().value;
+			if (nextOldest !== undefined) {
+				awaitingResponseRef.current = nextOldest;
+				armResponseTimeout();
+			}
+		},
+		[resolveAwaitingResponse, armResponseTimeout]
 	);
 
 	// ---------------------------------------------------------------------------
@@ -236,9 +495,17 @@ const useNfdAgentsWebSocket = ({
 				throw new Error(__("No configuration available", "wp-module-ai-chat"));
 			}
 
+			// Local-dev only: when the backend is serving NFD_AI_CHAT_JARVIS_DEBUG_TOKEN, it sets
+			// bypass_jwt_expiry so the client skips all JWT-expiry handling (pre-connect refetch,
+			// proactive refresh, on-close expiry refetch). This lets a hand-crafted local test token
+			// — possibly expired or with no `exp` claim — be used as-is without "Token expired,
+			// please refresh the page." This can only be true when the debug constant is defined in
+			// wp-config.php; the gateway still validates the token server-side.
+			const bypassJwtExpiry = !!config.bypass_jwt_expiry;
+
 			// Pre-connect: if JWT is already expired or within buffer, refetch config once
 			let refetchedForExpiry = false;
-			while (config?.jarvis_jwt) {
+			while (!bypassJwtExpiry && config?.jarvis_jwt) {
 				const expMs = getJwtExpirationMs(config.jarvis_jwt);
 				if (expMs == null) {
 					break;
@@ -280,11 +547,7 @@ const useNfdAgentsWebSocket = ({
 					migrateStorageKeys("", config.site_id, consumer);
 				} else {
 					const newKeys = getChatHistoryStorageKeys(consumer, config.site_id);
-					const restored = restoreChat(
-						newKeys.history,
-						newKeys.conversationId,
-						newKeys.sessionId
-					);
+					const restored = restoreChat(newKeys.history, newKeys.conversationId, newKeys.sessionId);
 					setMessages(restored.messages);
 					setConversationId(restored.conversationId);
 					sessionIdRef.current = restored.sessionId;
@@ -302,7 +565,7 @@ const useNfdAgentsWebSocket = ({
 			}
 
 			// Schedule proactive JWT refresh only for jarvis_jwt (exclude huapi_token / debug path)
-			if (config.jarvis_jwt) {
+			if (!bypassJwtExpiry && config.jarvis_jwt) {
 				if (jwtRefreshTimeoutRef.current) {
 					clearTimeout(jwtRefreshTimeoutRef.current);
 					jwtRefreshTimeoutRef.current = null;
@@ -365,6 +628,9 @@ const useNfdAgentsWebSocket = ({
 				hasUserMessageRef.current = messagesRef.current && messagesRef.current.length > 0;
 				isStoppedRef.current = false;
 				setCurrentResponse("");
+				// Deliver anything queued while disconnected and resend any message that was
+				// sent but never acknowledged before the socket dropped.
+				flushOutbox();
 			};
 
 			// Refresh the typing-indicator auto-hide timer. Only acts when a timer is
@@ -375,11 +641,7 @@ const useNfdAgentsWebSocket = ({
 					return;
 				}
 				clearTimeout(typingTimeoutRef.current);
-				typingTimeoutRef.current = setTimeout(() => {
-					setIsTyping(false);
-					setStatus(null);
-					typingTimeoutRef.current = null;
-				}, TYPING_TIMEOUT);
+				typingTimeoutRef.current = setTimeout(onResponseSilenceTimeout, TYPING_TIMEOUT);
 			};
 
 			// Wire message handler
@@ -394,6 +656,9 @@ const useNfdAgentsWebSocket = ({
 				setError,
 				saveSessionId,
 				saveConversationId,
+				confirmMessageDelivery,
+				notifyResponseActivity: resolveAwaitingResponse,
+				armResponseTimeout,
 				bumpTypingTimeout,
 			});
 
@@ -402,7 +667,6 @@ const useNfdAgentsWebSocket = ({
 					const data = JSON.parse(event.data);
 					handleMessage(data);
 				} catch (err) {
-					// eslint-disable-next-line no-console
 					console.error("[AI Chat] Error parsing WebSocket message:", err);
 				}
 			};
@@ -444,9 +708,12 @@ const useNfdAgentsWebSocket = ({
 				// Auth failure (4000/4001) or client-side detected token expiry: clear config so next connect fetches fresh JWT (throttled by cooldown)
 				const isAuthClose =
 					event.code === WS_CLOSE_AUTH_FAILED || event.code === WS_CLOSE_MISSING_TOKEN;
+				// Local debug token: never treat it as expired (see bypassJwtExpiry in connect()).
+				const bypassExpiryOnClose = !!configRef.current?.bypass_jwt_expiry;
 				const jwt = configRef.current?.jarvis_jwt;
 				const expMs = jwt ? getJwtExpirationMs(jwt) : null;
-				const tokenExpired = expMs != null && expMs < Date.now() + JWT_EXPIRED_BUFFER_MS;
+				const tokenExpired =
+					!bypassExpiryOnClose && expMs != null && expMs < Date.now() + JWT_EXPIRED_BUFFER_MS;
 				if (isAuthClose || tokenExpired) {
 					const now = Date.now();
 					const outsideAuthCooldown =
@@ -503,7 +770,6 @@ const useNfdAgentsWebSocket = ({
 			connectingRef.current = false;
 			// Config/token failures expected when Hiive unavailable or debug token not set
 			if (typeof console !== "undefined" && console.warn) {
-				// eslint-disable-next-line no-console
 				console.warn("[AI Chat] Connection failed:", connectError?.message || connectError);
 			}
 			setIsConnecting(false);
@@ -522,6 +788,11 @@ const useNfdAgentsWebSocket = ({
 		keyPrefix,
 		saveSessionId,
 		saveConversationId,
+		confirmMessageDelivery,
+		resolveAwaitingResponse,
+		flushOutbox,
+		onResponseSilenceTimeout,
+		armResponseTimeout,
 		MAX_RECONNECT_ATTEMPTS,
 		RECONNECT_DELAY,
 		MAX_RECONNECT_DELAY,
@@ -563,6 +834,11 @@ const useNfdAgentsWebSocket = ({
 			if (jwtRefreshTimeoutRef.current) {
 				clearTimeout(jwtRefreshTimeoutRef.current);
 				jwtRefreshTimeoutRef.current = null;
+			}
+			// Also clear the response-silence watchdog so it can't fire setState after unmount.
+			if (typingTimeoutRef.current) {
+				clearTimeout(typingTimeoutRef.current);
+				typingTimeoutRef.current = null;
 			}
 		};
 	}, []);
@@ -815,6 +1091,16 @@ const useNfdAgentsWebSocket = ({
 				return;
 			}
 
+			// Per-message client ID: lets the backend ACK (`message_received`) and de-dupe this
+			// send, and lets us resend the SAME id on reconnect without double-processing.
+			const clientMessageId = generateClientMessageId();
+			const payload = { type: "chat", message, client_message_id: clientMessageId };
+			if (convId) {
+				payload.conversationId = convId;
+			} else if (conversationId) {
+				payload.conversationId = conversationId;
+			}
+
 			if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
 				if (!convId) {
 					const userMessage = {
@@ -824,10 +1110,24 @@ const useNfdAgentsWebSocket = ({
 						content: message,
 						timestamp: new Date(),
 						sessionId: sessionIdRef.current,
+						clientMessageId,
+						acknowledged: false,
 					};
 					setMessages((prev) => [...prev, userMessage]);
+					// The response-silence watchdog tracks ONE in-flight turn — the oldest un-resolved
+					// message, which the backend processes first. Only set it if nothing is already
+					// awaited, so a burst of messages queued while offline keeps the watchdog on the
+					// first (oldest) one; confirmMessageDelivery(null) promotes it to the next-oldest as
+					// each turn completes. We do NOT arm the timer here — there's no connection yet, so
+					// it's armed on delivery (flushOutbox) / first typing_start, avoiding a premature
+					// fire during the outage.
+					if (awaitingResponseRef.current === null) {
+						awaitingResponseRef.current = clientMessageId;
+					}
+					// Queue the user message for delivery; ws.onopen flushes the outbox once open.
+					enqueuePendingAck(clientMessageId, payload);
 				}
-				// Trigger connect when not connected (disconnected or reconnecting) so message can be sent once open
+				// convId (approval) sends aren't queued — they're best-effort over a live socket.
 				connect();
 				return;
 			}
@@ -840,34 +1140,34 @@ const useNfdAgentsWebSocket = ({
 					content: message,
 					timestamp: new Date(),
 					sessionId: sessionIdRef.current,
+					clientMessageId,
+					acknowledged: false,
 				};
 				setMessages((prev) => [...prev, userMessage]);
 				setCurrentResponse("");
 				setIsTyping(true);
+				// This message is now awaiting a response; the silence watchdog targets it.
+				awaitingResponseRef.current = clientMessageId;
 
 				if (typingTimeoutRef.current) {
 					clearTimeout(typingTimeoutRef.current);
 				}
-				typingTimeoutRef.current = setTimeout(() => {
-					setIsTyping(false);
-					setStatus(null);
-					typingTimeoutRef.current = null;
-				}, TYPING_TIMEOUT);
+				typingTimeoutRef.current = setTimeout(onResponseSilenceTimeout, TYPING_TIMEOUT);
+
+				// Track the user message for ACK + resend-on-reconnect, then send.
+				enqueuePendingAck(clientMessageId, payload);
 			}
-
-			const payload = { type: "chat", message };
-
-			if (convId) {
-				payload.conversationId = convId;
-			} else if (conversationId) {
-				payload.conversationId = conversationId;
-			}
-
-			wsRef.current.send(JSON.stringify(payload));
+			// sendTrackedPayload sends the frame; for a convId (approval) send there's no outbox
+			// entry, so it simply isn't tracked/resent (best-effort) — the outbox holds only user
+			// messages, which are the ones with a bubble + Retry affordance.
+			sendTrackedPayload(clientMessageId, payload);
 		},
 		[
 			conversationId,
 			connect,
+			enqueuePendingAck,
+			sendTrackedPayload,
+			onResponseSilenceTimeout,
 			getConnectionFailedFallbackMessage,
 			MAX_RECONNECT_ATTEMPTS,
 			TYPING_TIMEOUT,
@@ -910,12 +1210,12 @@ const useNfdAgentsWebSocket = ({
 	const sendSystemMessage = useCallback(
 		(message) => {
 			if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
-				// eslint-disable-next-line no-console
 				console.warn("[AI Chat] Cannot send system message - not connected");
 				return;
 			}
 
-			const payload = { type: "chat", message };
+			const clientMessageId = generateClientMessageId();
+			const payload = { type: "chat", message, client_message_id: clientMessageId };
 
 			if (conversationId) {
 				payload.conversationId = conversationId;
@@ -927,15 +1227,16 @@ const useNfdAgentsWebSocket = ({
 			if (typingTimeoutRef.current) {
 				clearTimeout(typingTimeoutRef.current);
 			}
-			typingTimeoutRef.current = setTimeout(() => {
-				setIsTyping(false);
-				setStatus(null);
-				typingTimeoutRef.current = null;
-			}, TYPING_TIMEOUT);
+			// System messages have no user bubble to flag, so the silence watchdog only hides the
+			// indicator here (awaitingResponseRef is left untouched / null).
+			typingTimeoutRef.current = setTimeout(onResponseSilenceTimeout, TYPING_TIMEOUT);
 
-			wsRef.current.send(JSON.stringify(payload));
+			// Best-effort over the live socket — system messages have no bubble/Retry affordance, so
+			// they aren't tracked in the outbox (no resend-on-reconnect). client_message_id is still
+			// sent for backend de-dupe.
+			sendTrackedPayload(clientMessageId, payload);
 		},
-		[conversationId, TYPING_TIMEOUT]
+		[conversationId, sendTrackedPayload, onResponseSilenceTimeout, TYPING_TIMEOUT]
 	);
 
 	// ---------------------------------------------------------------------------
@@ -957,6 +1258,9 @@ const useNfdAgentsWebSocket = ({
 			clearTimeout(typingTimeoutRef.current);
 			typingTimeoutRef.current = null;
 		}
+		// Stop watching for a response. The outbox itself is intentionally preserved so a reconnect
+		// can resend its entries.
+		awaitingResponseRef.current = null;
 		if (wsRef.current) {
 			// Detach handlers before close so the orphaned onclose can't fire later and
 			// clobber state owned by a connect() that was started right after disconnect
@@ -1019,6 +1323,10 @@ const useNfdAgentsWebSocket = ({
 			setIsTyping(false);
 			setStatus(null);
 			setCurrentResponse("");
+			// Switching conversation context: drop pending sends so they aren't resent into the
+			// newly loaded conversation, and stop watching for a response.
+			pendingAcksRef.current.clear();
+			awaitingResponseRef.current = null;
 
 			// If we're connected, persist the loaded session/conv and reconnect so the backend uses them
 			if (sessId !== null && sessId !== undefined && wsRef.current?.readyState === WebSocket.OPEN) {
@@ -1028,7 +1336,6 @@ const useNfdAgentsWebSocket = ({
 						localStorage.setItem(CONVERSATION_STORAGE_KEY, convId);
 					}
 				} catch (err) {
-					// eslint-disable-next-line no-console
 					console.warn("[AI Chat] Failed to persist session for history load:", err);
 				}
 				disconnect();
@@ -1046,6 +1353,11 @@ const useNfdAgentsWebSocket = ({
 		setIsTyping(false);
 		setStatus(null);
 		setCurrentResponse("");
+		// The in-flight message was already sent; the user chose to abandon this turn, so drop any
+		// pending entries to avoid resending a stopped message, and stop awaiting a response (no
+		// retry should be surfaced for an intentionally stopped turn).
+		pendingAcksRef.current.clear();
+		awaitingResponseRef.current = null;
 		if (typingTimeoutRef.current) {
 			clearTimeout(typingTimeoutRef.current);
 			typingTimeoutRef.current = null;
@@ -1062,6 +1374,8 @@ const useNfdAgentsWebSocket = ({
 	const clearTyping = useCallback(() => {
 		setIsTyping(false);
 		setStatus(null);
+		// No longer waiting on a response — don't let the silence watchdog flag a stale target.
+		awaitingResponseRef.current = null;
 		if (typingTimeoutRef.current) {
 			clearTimeout(typingTimeoutRef.current);
 			typingTimeoutRef.current = null;
@@ -1080,7 +1394,6 @@ const useNfdAgentsWebSocket = ({
 			try {
 				contentString = JSON.stringify(content, null, 2);
 			} catch (e) {
-				// eslint-disable-next-line no-console
 				console.warn("[useNfdAgentsWebSocket] Failed to stringify content object:", e);
 				contentString = String(content);
 			}
@@ -1146,6 +1459,8 @@ const useNfdAgentsWebSocket = ({
 
 			hasUserMessageRef.current = false;
 			isStoppedRef.current = false;
+			pendingAcksRef.current.clear();
+			awaitingResponseRef.current = null;
 
 			if (typingTimeoutRef.current) {
 				clearTimeout(typingTimeoutRef.current);
@@ -1162,7 +1477,6 @@ const useNfdAgentsWebSocket = ({
 
 			reconnectAttempts.current = 0;
 		} catch (err) {
-			// eslint-disable-next-line no-console
 			console.warn("[AI Chat] Failed to clear chat history:", err);
 		}
 	}, [STORAGE_KEY, CONVERSATION_STORAGE_KEY, SESSION_STORAGE_KEY]);
