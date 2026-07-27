@@ -48,15 +48,17 @@ const clearTypingTimeout = (typingTimeoutRef) => {
  * Helper: finalize typing state after content is received.
  *
  * Also implicitly confirms message delivery: an assistant turn-completing event proves the
- * backend received and processed the in-flight user message(s). Clearing the outbox here is
- * the backward-compatible path for backends that don't emit a `message_received` ACK — without
- * it, a reconnect after the turn would resend an already-handled message.
+ * backend received and processed one in-flight user message, so the OLDEST pending outbox entry
+ * is cleared (the backend processes sends in order). This is the backward-compatible path for
+ * backends that don't emit a `message_received` ACK — without it, a message the backend has
+ * already answered would still be sitting in the outbox and get surfaced for Retry.
  *
  * @param {Object}   deps                          Subset of handler deps
  * @param {Function} deps.setIsTyping              State setter
  * @param {Function} deps.setStatus                State setter
  * @param {Object}   deps.typingTimeoutRef         React ref holding the timeout ID
- * @param {Function} [deps.confirmMessageDelivery] Optional. Called with null to clear the outbox.
+ * @param {Function} [deps.confirmMessageDelivery] Optional. Called with null to clear the oldest
+ *                                                 pending outbox entry.
  */
 const finalizeTyping = ({ setIsTyping, setStatus, typingTimeoutRef, confirmMessageDelivery }) => {
 	setIsTyping(false);
@@ -105,7 +107,8 @@ const addAssistantMsg = (setMessages, content, idSuffix = "") => {
  * @param {Function} [deps.confirmMessageDelivery] Optional. callback(clientMessageId|null) —
  *                                                 removes an outbox entry on an explicit
  *                                                 `message_received` ACK (id given), or clears the
- *                                                 whole outbox on implicit turn completion (null).
+ *                                                 oldest pending entry on implicit turn completion
+ *                                                 (null).
  * @param {Function} [deps.notifyResponseActivity] Optional. callback() — called on the first turn
  *                                                 activity frame so the response-silence watchdog
  *                                                 stops tracking a message that did get a response.
@@ -150,8 +153,8 @@ export function createMessageHandler(deps) {
 		// delivery (so we don't resend) is valid even after the user stops the turn. A real ACK
 		// always carries the id of the message it confirms (the backend gates the frame on
 		// client_message_id), so confirm only that specific message. An id-less frame is malformed
-		// and must NOT fall through to confirmMessageDelivery(null), whose clear-all would drop
-		// unrelated pending sends.
+		// and must NOT fall through to confirmMessageDelivery(null), which would clear an unrelated
+		// pending send (the oldest one).
 		if (data.type === "message_received") {
 			if (data.client_message_id && typeof confirmMessageDelivery === "function") {
 				confirmMessageDelivery(data.client_message_id);
@@ -301,8 +304,8 @@ export function createMessageHandler(deps) {
 			setError(data.message || data.error || "An error occurred");
 			setIsTyping(false);
 			setStatus(null);
-			// The turn ended (in error). The message reached the backend, so clear the outbox to
-			// avoid resending it on reconnect.
+			// The turn ended (in error). The message reached the backend, so clear its outbox entry
+			// (the oldest pending one) rather than surfacing Retry for it on the next connect.
 			if (typeof confirmMessageDelivery === "function") {
 				confirmMessageDelivery(null);
 			}

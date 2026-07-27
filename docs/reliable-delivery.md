@@ -21,22 +21,28 @@ WebSocket. Relevant fields:
 
 ## Reliable delivery (client_message_id + ACK)
 
-Every outbound chat frame carries a per-message `client_message_id`. The backend
-replies with a `message_received` ACK and uses the id for de-duplication, so resends
-are idempotent.
+Every outbound chat frame carries a per-message `client_message_id`. A backend that
+supports it replies with a `message_received` ACK and uses the id for de-duplication.
 
 The client tracks **user** chat messages (the ones with a bubble + Retry affordance)
 in a bounded in-memory **outbox** and recovers them two ways:
 
-- **Resend on reconnect** — `ws.onopen` flushes the outbox, reusing the same id. A
-  message queued while offline is delivered on the next connect; one that was sent but
-  never acknowledged before the socket dropped is resent. Entries that exhaust the
-  resend budget or age past the TTL (and any evicted on overflow) are surfaced for
-  **Retry** rather than dropped silently.
-- **Response-silence watchdog** — if a delivered message produces no response within
-  the (activity-bumped) silence window, the message is surfaced for **Retry**. A late
-  reply un-flags it. This also covers the "frame lost while the socket stayed open"
-  case (recovered via Retry rather than an automatic resend).
+- **Deliver on connect** — `ws.onopen` flushes the outbox. Only entries that have
+  **never been handed to a socket** are sent automatically, so a message typed before
+  the first connect completed is delivered as soon as the socket opens.
+- **Retry for anything ambiguous** — an entry that was already sent once and never
+  confirmed is retired and surfaced for **Retry**, never auto-resent. Once a frame has
+  left the client we cannot tell whether the backend received and processed it: the ACK
+  is not emitted by every backend, and the server-side de-dupe that would make a resend
+  idempotent is opt-in (`WEBSOCKET_ENABLE_DURABLE_DEDUPE`, off by default; the
+  per-connection in-memory de-dupe is discarded when the socket closes). Since this
+  agent mutates the user's site, a re-run turn means a duplicate action, so recovery is
+  one Retry click rather than an automatic resend. Entries evicted on outbox overflow
+  are surfaced the same way rather than dropped silently.
+- **Response-silence watchdog** — if a sent message sees no inbound frame at all within
+  the silence window, it is surfaced for **Retry**. A late reply un-flags it. Note this
+  only covers total silence: once any frame arrives for the turn (even `typing_start`),
+  a later stall just hides the typing indicator.
 
 For backends that do not emit the ACK, any turn-completing event (assistant content
 or error) implicitly confirms delivery of one message and clears the **oldest** pending
@@ -54,7 +60,5 @@ All in `src/constants/nfdAgents/websocket.js`:
 
 | Constant | Default | Purpose |
 |----------|---------|---------|
-| `MAX_ACK_RESEND_ATTEMPTS` | 3 | Total sends per message (initial + resends) before it's retired as undeliverable (surfaced for Retry). |
-| `ACK_RESEND_TTL_MS` | 60000 | How long an already-sent message stays eligible for resend on reconnect. |
 | `MAX_OUTBOX_SIZE` | 50 | Outbox cap; oldest is evicted (and surfaced for Retry) first. |
 | `TYPING_TIMEOUT` | 180000 | Response-silence window; bumped by every inbound event, so it only fires on genuine silence. |

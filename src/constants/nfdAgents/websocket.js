@@ -48,15 +48,13 @@ export const NFD_AGENTS_WEBSOCKET = {
 	// fires when the backend has truly stopped emitting — not while a long tool call is in flight.
 	TYPING_TIMEOUT: 180000,
 	// Reliable-delivery (client_message_id ACK) tuning. Each outbound chat frame carries a
-	// client_message_id; the backend replies with a `message_received` ACK. Until a message is
-	// acknowledged (or the turn completes), it stays in the in-memory outbox and is resent when
-	// the socket reopens. Resends reuse the same client_message_id so the backend can de-dupe.
+	// client_message_id; a backend that supports it replies with a `message_received` ACK and
+	// uses the id to de-dupe. Until a message is acknowledged (or the turn completes) it stays
+	// in the in-memory outbox, so a message queued before the socket opened is delivered on
+	// connect. A message that has already been sent once is never auto-resent — it is surfaced
+	// for Retry instead (see flushOutbox), so no turn can be executed twice.
 	//
-	// MAX_ACK_RESEND_ATTEMPTS counts TOTAL sends (initial + resends), so 3 = initial + 2 resends.
-	// ACK_RESEND_TTL_MS bounds how long an unacked message stays eligible for resend.
 	// MAX_OUTBOX_SIZE caps outbox growth during a long disconnected streak (oldest dropped first).
-	MAX_ACK_RESEND_ATTEMPTS: 3,
-	ACK_RESEND_TTL_MS: 60000,
 	MAX_OUTBOX_SIZE: 50,
 	WS_CLOSE_AUTH_FAILED,
 	WS_CLOSE_MISSING_TOKEN,

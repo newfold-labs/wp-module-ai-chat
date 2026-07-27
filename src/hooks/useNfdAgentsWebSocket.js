@@ -159,8 +159,9 @@ const useNfdAgentsWebSocket = ({
 	const connectionStateRef = useRef(connectionState);
 	const prevConnectionStateRef = useRef(connectionState);
 	// Outbox of USER chat messages awaiting a backend `message_received` ACK, keyed by
-	// client_message_id. Each entry: { payload, createdAt, attempts }. Entries are resent on
-	// reconnect (flushOutbox) and removed on explicit ACK or when the turn completes
+	// client_message_id. Each entry: { payload, attempts }. Entries that never reached
+	// a socket are delivered on connect (flushOutbox); entries already sent once are retired for
+	// Retry rather than resent. Removed on explicit ACK or when the turn completes
 	// (confirmMessageDelivery). Only user messages (which have a bubble + Retry affordance) are
 	// tracked here; system/approval sends are best-effort (see sendSystemMessage / the convId path).
 	const pendingAcksRef = useRef(new Map());
@@ -180,8 +181,6 @@ const useNfdAgentsWebSocket = ({
 	const AUTH_REFRESH_COOLDOWN_MS = NFD_AGENTS_WEBSOCKET.AUTH_REFRESH_COOLDOWN_MS;
 	const JWT_EXPIRED_BUFFER_MS = NFD_AGENTS_WEBSOCKET.JWT_EXPIRED_BUFFER_MS;
 	const JWT_PROACTIVE_REFRESH_DEFER_MS = NFD_AGENTS_WEBSOCKET.JWT_PROACTIVE_REFRESH_DEFER_MS;
-	const MAX_ACK_RESEND_ATTEMPTS = NFD_AGENTS_WEBSOCKET.MAX_ACK_RESEND_ATTEMPTS;
-	const ACK_RESEND_TTL_MS = NFD_AGENTS_WEBSOCKET.ACK_RESEND_TTL_MS;
 	const MAX_OUTBOX_SIZE = NFD_AGENTS_WEBSOCKET.MAX_OUTBOX_SIZE;
 
 	// ---------------------------------------------------------------------------
@@ -234,7 +233,7 @@ const useNfdAgentsWebSocket = ({
 	// Retire a pending message that cannot be delivered: surface Retry, drop it from the outbox,
 	// and — if it was the message we were actively awaiting a response for — stop awaiting and clear
 	// the typing indicator/watchdog (that turn is dead). This is the single path for EVERY
-	// otherwise-silent drop site (ack-timeout exhaustion, reconnect TTL/budget retirement, and
+	// otherwise-silent drop site (a sent-but-unconfirmed entry found on reconnect, and
 	// full-outbox eviction), so none of them discard a message without UI feedback. Keying the
 	// typing/await teardown on the awaited id means evicting an OLD queued message never disturbs
 	// the in-flight turn.
@@ -269,15 +268,16 @@ const useNfdAgentsWebSocket = ({
 				// send can't vanish without the user being able to recover it.
 				retireOutboxEntry(oldestKey);
 			}
-			outbox.set(clientMessageId, { payload, createdAt: Date.now(), attempts: 0 });
+			outbox.set(clientMessageId, { payload, attempts: 0 });
 		},
 		[MAX_OUTBOX_SIZE, retireOutboxEntry]
 	);
 
-	// Send a payload over the open socket and count it against the message's resend budget.
+	// Send a payload over the open socket and record that the frame left the client.
 	// attempts is incremented only on a successful send: a throwing send (rare on an OPEN socket,
-	// but possible if it half-closes) must not silently burn the budget and strand the message
-	// undelivered. Returns whether the frame was handed to the socket.
+	// but possible if it half-closes) never reached the backend, so it must not mark the message
+	// as ambiguously-sent and cost it its one automatic delivery. Returns whether the frame was
+	// handed to the socket.
 	const sendTrackedPayload = useCallback((clientMessageId, payload) => {
 		const ws = wsRef.current;
 		if (!ws || ws.readyState !== WebSocket.OPEN) {
@@ -341,30 +341,34 @@ const useNfdAgentsWebSocket = ({
 		typingTimeoutRef.current = setTimeout(onResponseSilenceTimeout, TYPING_TIMEOUT);
 	}, [onResponseSilenceTimeout, TYPING_TIMEOUT]);
 
-	// Resend any outbox entries over the open socket. Called from ws.onopen so messages
-	// that were queued while disconnected — or sent but never acknowledged before the socket
-	// dropped — are delivered once the connection is (re)established. Resends reuse the original
-	// client_message_id, so a backend with durable de-dupe enabled will not double-process them.
+	// Deliver outbox entries over the open socket. Called from ws.onopen so a message queued
+	// while disconnected (e.g. typed before the first connect finished) is delivered once the
+	// connection is established.
+	//
+	// ONLY messages that have never been handed to a socket (attempts === 0) are sent
+	// automatically. Once a frame has left the client we cannot tell whether the backend
+	// received and processed it: `message_received` is not emitted by every backend, and the
+	// server-side de-dupe that would make a resend idempotent is opt-in
+	// (WEBSOCKET_ENABLE_DURABLE_DEDUPE, off by default — the per-connection in-memory de-dupe
+	// is discarded when the socket closes). Auto-resending an already-sent frame would
+	// therefore re-run the turn, and this agent mutates the user's site, so a duplicate turn
+	// means a duplicate action. Those ambiguous entries are retired and surfaced for Retry
+	// instead, which recovers the same message in one click without ever double-sending.
 	const flushOutbox = useCallback(() => {
 		const ws = wsRef.current;
 		if (!ws || ws.readyState !== WebSocket.OPEN) {
 			return;
 		}
-		const now = Date.now();
-		// Snapshot the entries so the in-loop retire/resend can't interact with Map iteration order.
+		// Snapshot the entries so the in-loop retire/send can't interact with Map iteration order.
 		for (const [id, entry] of Array.from(pendingAcksRef.current.entries())) {
-			// Retire only messages we've already tried at least once: budget exhausted, or aged
-			// past the TTL. A message queued while offline (attempts === 0) must still get its
-			// first send no matter how long the outage lasted — so it is never TTL-dropped before
-			// it has ever left the client.
-			const exhausted = entry.attempts >= MAX_ACK_RESEND_ATTEMPTS;
-			const expired = entry.attempts > 0 && now - entry.createdAt > ACK_RESEND_TTL_MS;
-			if (exhausted || expired) {
-				// Retire as undeliverable rather than dropping silently — surfaces Retry and clears
-				// the awaited-turn state if this was the in-flight message.
+			if (entry.attempts > 0) {
+				// Already sent once and never confirmed. Retire as undeliverable rather than
+				// dropping silently — surfaces Retry and clears the awaited-turn state if this
+				// was the in-flight message.
 				retireOutboxEntry(id);
 				continue;
 			}
+			// Never left the client, so it is safe to send no matter how long the outage lasted.
 			sendTrackedPayload(id, entry.payload);
 		}
 		// Keep the response-silence watchdog keyed to the in-flight (oldest) pending message. If
@@ -379,13 +383,7 @@ const useNfdAgentsWebSocket = ({
 		if (awaitingResponseRef.current && !typingTimeoutRef.current) {
 			armResponseTimeout();
 		}
-	}, [
-		ACK_RESEND_TTL_MS,
-		MAX_ACK_RESEND_ATTEMPTS,
-		sendTrackedPayload,
-		retireOutboxEntry,
-		armResponseTimeout,
-	]);
+	}, [sendTrackedPayload, retireOutboxEntry, armResponseTimeout]);
 
 	// Resolve the outstanding response wait: stop watching the awaited message and undo any
 	// response-silence retry flag we may have surfaced on it (the response did arrive after all —
@@ -628,8 +626,8 @@ const useNfdAgentsWebSocket = ({
 				hasUserMessageRef.current = messagesRef.current && messagesRef.current.length > 0;
 				isStoppedRef.current = false;
 				setCurrentResponse("");
-				// Deliver anything queued while disconnected and resend any message that was
-				// sent but never acknowledged before the socket dropped.
+				// Deliver anything queued while disconnected, and surface Retry for any message
+				// that was sent but never confirmed before the socket dropped.
 				flushOutbox();
 			};
 
@@ -1092,7 +1090,7 @@ const useNfdAgentsWebSocket = ({
 			}
 
 			// Per-message client ID: lets the backend ACK (`message_received`) and de-dupe this
-			// send, and lets us resend the SAME id on reconnect without double-processing.
+			// send, and gives the outbox a stable key for the message's delivery state.
 			const clientMessageId = generateClientMessageId();
 			const payload = { type: "chat", message, client_message_id: clientMessageId };
 			if (convId) {
@@ -1154,7 +1152,7 @@ const useNfdAgentsWebSocket = ({
 				}
 				typingTimeoutRef.current = setTimeout(onResponseSilenceTimeout, TYPING_TIMEOUT);
 
-				// Track the user message for ACK + resend-on-reconnect, then send.
+				// Track the user message for ACK/delivery state, then send.
 				enqueuePendingAck(clientMessageId, payload);
 			}
 			// sendTrackedPayload sends the frame; for a convId (approval) send there's no outbox
@@ -1232,8 +1230,7 @@ const useNfdAgentsWebSocket = ({
 			typingTimeoutRef.current = setTimeout(onResponseSilenceTimeout, TYPING_TIMEOUT);
 
 			// Best-effort over the live socket — system messages have no bubble/Retry affordance, so
-			// they aren't tracked in the outbox (no resend-on-reconnect). client_message_id is still
-			// sent for backend de-dupe.
+			// they aren't tracked in the outbox. client_message_id is still sent for backend de-dupe.
 			sendTrackedPayload(clientMessageId, payload);
 		},
 		[conversationId, sendTrackedPayload, onResponseSilenceTimeout, TYPING_TIMEOUT]
@@ -1258,8 +1255,8 @@ const useNfdAgentsWebSocket = ({
 			clearTimeout(typingTimeoutRef.current);
 			typingTimeoutRef.current = null;
 		}
-		// Stop watching for a response. The outbox itself is intentionally preserved so a reconnect
-		// can resend its entries.
+		// Stop watching for a response. The outbox itself is intentionally preserved so the next
+		// connect can deliver anything still unsent and surface Retry for anything already sent.
 		awaitingResponseRef.current = null;
 		if (wsRef.current) {
 			// Detach handlers before close so the orphaned onclose can't fire later and
