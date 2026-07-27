@@ -233,8 +233,8 @@ const useNfdAgentsWebSocket = ({
 	// Retire a pending message that cannot be delivered: surface Retry, drop it from the outbox,
 	// and — if it was the message we were actively awaiting a response for — stop awaiting and clear
 	// the typing indicator/watchdog (that turn is dead). This is the single path for EVERY
-	// otherwise-silent drop site (a sent-but-unconfirmed entry found on reconnect, and
-	// full-outbox eviction), so none of them discard a message without UI feedback. Keying the
+	// otherwise-silent drop site (today: full-outbox eviction), so none of them discard a
+	// message without UI feedback. Keying the
 	// typing/await teardown on the awaited id means evicting an OLD queued message never disturbs
 	// the in-flight turn.
 	const retireOutboxEntry = useCallback(
@@ -352,20 +352,23 @@ const useNfdAgentsWebSocket = ({
 	// (WEBSOCKET_ENABLE_DURABLE_DEDUPE, off by default — the per-connection in-memory de-dupe
 	// is discarded when the socket closes). Auto-resending an already-sent frame would
 	// therefore re-run the turn, and this agent mutates the user's site, so a duplicate turn
-	// means a duplicate action. Those ambiguous entries are retired and surfaced for Retry
-	// instead, which recovers the same message in one click without ever double-sending.
+	// means a duplicate action.
+	//
+	// An already-sent entry is left in the outbox rather than sent OR failed here. A dropped
+	// socket does not mean a dropped turn: the backend rebinds the session to the new socket
+	// and keeps streaming the SAME turn, so failing the message at reconnect would contradict
+	// the answer that is about to arrive. Whichever actually happens resolves it — turn
+	// completion clears the entry (confirmMessageDelivery), and genuine silence surfaces Retry
+	// via the watchdog armed below. The entry can never be auto-resent while it sits here,
+	// because reaching this loop again still finds attempts > 0.
 	const flushOutbox = useCallback(() => {
 		const ws = wsRef.current;
 		if (!ws || ws.readyState !== WebSocket.OPEN) {
 			return;
 		}
-		// Snapshot the entries so the in-loop retire/send can't interact with Map iteration order.
+		// Snapshot the entries so the in-loop send can't interact with Map iteration order.
 		for (const [id, entry] of Array.from(pendingAcksRef.current.entries())) {
 			if (entry.attempts > 0) {
-				// Already sent once and never confirmed. Retire as undeliverable rather than
-				// dropping silently — surfaces Retry and clears the awaited-turn state if this
-				// was the in-flight message.
-				retireOutboxEntry(id);
 				continue;
 			}
 			// Never left the client, so it is safe to send no matter how long the outage lasted.
@@ -383,7 +386,7 @@ const useNfdAgentsWebSocket = ({
 		if (awaitingResponseRef.current && !typingTimeoutRef.current) {
 			armResponseTimeout();
 		}
-	}, [sendTrackedPayload, retireOutboxEntry, armResponseTimeout]);
+	}, [sendTrackedPayload, armResponseTimeout]);
 
 	// Resolve the outstanding response wait: stop watching the awaited message and undo any
 	// response-silence retry flag we may have surfaced on it (the response did arrive after all —

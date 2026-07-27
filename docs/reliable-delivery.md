@@ -30,15 +30,17 @@ in a bounded in-memory **outbox** and recovers them two ways:
 - **Deliver on connect** — `ws.onopen` flushes the outbox. Only entries that have
   **never been handed to a socket** are sent automatically, so a message typed before
   the first connect completed is delivered as soon as the socket opens.
-- **Retry for anything ambiguous** — an entry that was already sent once and never
-  confirmed is retired and surfaced for **Retry**, never auto-resent. Once a frame has
-  left the client we cannot tell whether the backend received and processed it: the ACK
-  is not emitted by every backend, and the server-side de-dupe that would make a resend
-  idempotent is opt-in (`WEBSOCKET_ENABLE_DURABLE_DEDUPE`, off by default; the
-  per-connection in-memory de-dupe is discarded when the socket closes). Since this
-  agent mutates the user's site, a re-run turn means a duplicate action, so recovery is
-  one Retry click rather than an automatic resend. Entries evicted on outbox overflow
-  are surfaced the same way rather than dropped silently.
+- **Never auto-resend an already-sent frame** — once a frame has left the client we
+  cannot tell whether the backend received and processed it: the ACK is not emitted by
+  every backend, and the server-side de-dupe that would make a resend idempotent is
+  opt-in (`WEBSOCKET_ENABLE_DURABLE_DEDUPE`, off by default; the per-connection
+  in-memory de-dupe is discarded when the socket closes). Since this agent mutates the
+  user's site, a re-run turn means a duplicate action. Such an entry is left pending on
+  reconnect rather than resent or failed: a dropped socket is not a dropped turn, since
+  the backend rebinds the session to the new socket and keeps streaming the same turn.
+  Turn completion then clears it, or genuine silence surfaces **Retry** via the
+  watchdog. Entries evicted on outbox overflow are surfaced for Retry rather than
+  dropped silently.
 - **Response-silence watchdog** — if a sent message sees no inbound frame at all within
   the silence window, it is surfaced for **Retry**. A late reply un-flags it. Note this
   only covers total silence: once any frame arrives for the turn (even `typing_start`),
