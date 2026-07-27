@@ -147,6 +147,19 @@ export function createMessageHandler(deps) {
 		}
 	};
 
+	// A turn-completing frame whose content was filtered out (initial greeting,
+	// "sales_requested", "No content provided") renders nothing and so never reaches
+	// finalizeTyping — but the backend still received and processed the user message.
+	// Confirm delivery anyway, otherwise the outbox entry survives the turn and a later
+	// reconnect retires it, surfacing a misleading Retry on a message that was handled.
+	// No-op when the outbox is empty (e.g. the greeting filter, which runs before any
+	// user message exists) or when the backend already sent a `message_received` ACK.
+	const confirmFilteredTurn = () => {
+		if (typeof confirmMessageDelivery === "function") {
+			confirmMessageDelivery(null);
+		}
+	};
+
 	return function handleMessage(data) {
 		// --- message_received (delivery ACK) ---
 		// Handled before the stop guard: it carries no displayable content and confirming
@@ -234,6 +247,15 @@ export function createMessageHandler(deps) {
 						setConversationId(newConversationId);
 						saveConversationId(newConversationId);
 					}
+					// An approval request proves the backend received and processed the user
+					// message, even though this branch renders nothing and so never reaches
+					// finalizeTyping. Confirm delivery here or the entry sits in the outbox for
+					// the whole approval wait and gets retired (surfacing a misleading Retry on
+					// an already-processed message) if the socket drops meanwhile. On a backend
+					// that emits `message_received` the entry is already gone and this no-ops.
+					if (typeof confirmMessageDelivery === "function") {
+						confirmMessageDelivery(null);
+					}
 					return;
 				}
 			}
@@ -243,6 +265,8 @@ export function createMessageHandler(deps) {
 			if (filtered) {
 				addAssistantMsg(setMessages, filtered);
 				finalizeTyping(deps);
+			} else {
+				confirmFilteredTurn();
 			}
 			return;
 		}
@@ -273,6 +297,8 @@ export function createMessageHandler(deps) {
 			if (filtered) {
 				addAssistantMsg(setMessages, filtered);
 				finalizeTyping(deps);
+			} else {
+				confirmFilteredTurn();
 			}
 			return;
 		}
@@ -291,6 +317,7 @@ export function createMessageHandler(deps) {
 			const filtered = filterMessage(messageContent, hasUserMessageRef.current);
 
 			if (!filtered) {
+				confirmFilteredTurn();
 				return;
 			}
 
@@ -318,6 +345,7 @@ export function createMessageHandler(deps) {
 			const filtered = filterMessage(messageContent, hasUserMessageRef.current);
 
 			if (!filtered) {
+				confirmFilteredTurn();
 				return;
 			}
 
