@@ -169,6 +169,12 @@ const useNfdAgentsWebSocket = ({
 	// Drives the response-silence retry affordance. Distinct from the outbox, which tracks delivery:
 	// a message can be ACKed (out of the outbox) yet still awaiting a response.
 	const awaitingResponseRef = useRef(null);
+	// True once an explicit `message_received` ACK has been seen for the turn currently completing.
+	// The implicit (ACK-less) confirmation clears the OLDEST outbox entry, which is only a valid
+	// stand-in when no ACK settled this turn. Without this guard both paths run for the same turn
+	// and the implicit clear consumes the NEXT message's entry. Reset at each turn boundary, so a
+	// backend that stops ACKing mid-session falls straight back to the implicit path.
+	const ackSeenForCurrentTurnRef = useRef(false);
 
 	const MAX_RECONNECT_ATTEMPTS = NFD_AGENTS_WEBSOCKET.MAX_RECONNECT_ATTEMPTS;
 	const RECONNECT_DELAY = NFD_AGENTS_WEBSOCKET.RECONNECT_DELAY;
@@ -426,6 +432,10 @@ const useNfdAgentsWebSocket = ({
 	const confirmMessageDelivery = useCallback(
 		(clientMessageId) => {
 			if (clientMessageId) {
+				// Record the ACK even when it matches no outbox entry (an approval/system send, or a
+				// message already retired). The flag only ever suppresses a delete, so erring towards
+				// "an ACK settled this turn" errs towards keeping tracking, never towards losing it.
+				ackSeenForCurrentTurnRef.current = true;
 				pendingAcksRef.current.delete(clientMessageId);
 				setMessages((prev) => {
 					let changed = false;
@@ -440,10 +450,19 @@ const useNfdAgentsWebSocket = ({
 				});
 				return;
 			}
-			// Map preserves insertion order, so the first key is the oldest pending send.
-			const oldestPending = pendingAcksRef.current.keys().next().value;
-			if (oldestPending !== undefined) {
-				pendingAcksRef.current.delete(oldestPending);
+			if (ackSeenForCurrentTurnRef.current) {
+				// An explicit ACK already retired this turn's entry, so the oldest remaining entry
+				// belongs to a DIFFERENT message that is still in flight (e.g. one queued while the
+				// socket was down, mid-turn). Clearing it here would strip its delivery tracking and
+				// Retry affordance before its own turn ever ran. Consume the flag: the next turn
+				// either gets its own ACK or legitimately falls back to the implicit clear.
+				ackSeenForCurrentTurnRef.current = false;
+			} else {
+				// Map preserves insertion order, so the first key is the oldest pending send.
+				const oldestPending = pendingAcksRef.current.keys().next().value;
+				if (oldestPending !== undefined) {
+					pendingAcksRef.current.delete(oldestPending);
+				}
 			}
 			// Resolve the watchdog for the turn that just completed (clears awaiting + un-flags).
 			resolveAwaitingResponse();
@@ -1327,6 +1346,7 @@ const useNfdAgentsWebSocket = ({
 			// newly loaded conversation, and stop watching for a response.
 			pendingAcksRef.current.clear();
 			awaitingResponseRef.current = null;
+			ackSeenForCurrentTurnRef.current = false;
 
 			// If we're connected, persist the loaded session/conv and reconnect so the backend uses them
 			if (sessId !== null && sessId !== undefined && wsRef.current?.readyState === WebSocket.OPEN) {
@@ -1358,6 +1378,7 @@ const useNfdAgentsWebSocket = ({
 		// retry should be surfaced for an intentionally stopped turn).
 		pendingAcksRef.current.clear();
 		awaitingResponseRef.current = null;
+		ackSeenForCurrentTurnRef.current = false;
 		if (typingTimeoutRef.current) {
 			clearTimeout(typingTimeoutRef.current);
 			typingTimeoutRef.current = null;
@@ -1461,6 +1482,7 @@ const useNfdAgentsWebSocket = ({
 			isStoppedRef.current = false;
 			pendingAcksRef.current.clear();
 			awaitingResponseRef.current = null;
+			ackSeenForCurrentTurnRef.current = false;
 
 			if (typingTimeoutRef.current) {
 				clearTimeout(typingTimeoutRef.current);

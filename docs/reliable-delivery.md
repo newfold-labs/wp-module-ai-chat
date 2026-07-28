@@ -48,9 +48,21 @@ in a bounded in-memory **outbox** and recovers them two ways:
 
 For backends that do not emit the ACK, any turn-completing event (assistant content
 or error) implicitly confirms delivery of one message and clears the **oldest** pending
-outbox entry (the backend processes sends in order). Clearing one-at-a-time — rather
-than the whole outbox — keeps the other messages' tracking intact when several were
+outbox entry (the backend processes sends in order). Clearing one-at-a-time, rather
+than the whole outbox, keeps the other messages' tracking intact when several were
 queued during an offline streak and flushed together on reconnect.
+
+This implicit clear is a **fallback**, so it is skipped when an explicit ACK already
+settled the turn that is completing. Both paths otherwise run for the same turn: the ACK
+retires its own entry, then the turn-completing event clears the oldest *remaining* entry,
+which belongs to a different, still-in-flight message. That would strip the newer message's
+delivery tracking (and its Retry affordance) before its own turn ever ran. It needs two
+entries pending at once, so whether it can be reached depends on the **consumer**: the
+module exports `ChatInput` but never renders it, so it cannot assume the host disables the
+composer while a turn is in flight. (The Help Center host does keep it disabled for the
+whole outage, which closes the path there.) The guard is reset at each turn boundary, so a
+backend that stops ACKing mid-session falls straight back to the implicit path on the next
+turn.
 
 System messages and approval (`convId`) sends are **best-effort**: they're sent with a
 `client_message_id` (for backend de-dupe) but are not tracked in the outbox, since they
