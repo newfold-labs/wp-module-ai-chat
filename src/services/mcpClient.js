@@ -6,7 +6,7 @@
  * Configurable for use across different modules.
  */
 
-/* eslint-disable no-undef, no-console */
+/* eslint-disable no-console */
 
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";

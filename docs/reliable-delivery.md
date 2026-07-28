@@ -1,0 +1,78 @@
+---
+name: wp-module-ai-chat
+title: Reliable delivery & config
+description: client_message_id/ACK delivery model, tuning constants, and the bypass_jwt_expiry config field.
+updated: 2026-06-18
+---
+
+# Reliable delivery & config
+
+## Config REST response
+
+`GET` of the chat config endpoint returns the fields the client needs to open the
+WebSocket. Relevant fields:
+
+| Field | Meaning |
+|-------|---------|
+| `gateway_url` | WebSocket gateway URL. |
+| `jarvis_jwt` | Token used to authenticate the WebSocket. |
+| `site_url`, `site_id`, `brand_id`, `agent_type` | Routing / scoping metadata. |
+| `bypass_jwt_expiry` | **Local-dev only.** `true` when the site is running on the `NFD_AI_CHAT_JARVIS_DEBUG_TOKEN` wp-config constant (see `JarvisJWTHelper::is_using_debug_token()`). The client then skips all client-side JWT-expiry handling (pre-connect refetch, proactive refresh, on-close expiry refetch) so a hand-crafted local token with no/expired `exp` works as-is. It is `false` in production (the constant is absent) and is **not** an auth control — the gateway still validates the token server-side. |
+
+## Reliable delivery (client_message_id + ACK)
+
+Every outbound chat frame carries a per-message `client_message_id`. A backend that
+supports it replies with a `message_received` ACK and uses the id for de-duplication.
+
+The client tracks **user** chat messages (the ones with a bubble + Retry affordance)
+in a bounded in-memory **outbox** and recovers them two ways:
+
+- **Deliver on connect** — `ws.onopen` flushes the outbox. Only entries that have
+  **never been handed to a socket** are sent automatically, so a message typed before
+  the first connect completed is delivered as soon as the socket opens.
+- **Never auto-resend an already-sent frame** — once a frame has left the client we
+  cannot tell whether the backend received and processed it: the ACK is not emitted by
+  every backend, and the server-side de-dupe that would make a resend idempotent is
+  opt-in (`WEBSOCKET_ENABLE_DURABLE_DEDUPE`, off by default; the per-connection
+  in-memory de-dupe is discarded when the socket closes). Since this agent mutates the
+  user's site, a re-run turn means a duplicate action. Such an entry is left pending on
+  reconnect rather than resent or failed: a dropped socket is not a dropped turn, since
+  the backend rebinds the session to the new socket and keeps streaming the same turn.
+  Turn completion then clears it, or genuine silence surfaces **Retry** via the
+  watchdog. Entries evicted on outbox overflow are surfaced for Retry rather than
+  dropped silently.
+- **Response-silence watchdog** — if a sent message sees no inbound frame at all within
+  the silence window, it is surfaced for **Retry**. A late reply un-flags it. Note this
+  only covers total silence: once any frame arrives for the turn (even `typing_start`),
+  a later stall just hides the typing indicator.
+
+For backends that do not emit the ACK, any turn-completing event (assistant content
+or error) implicitly confirms delivery of one message and clears the **oldest** pending
+outbox entry (the backend processes sends in order). Clearing one-at-a-time, rather
+than the whole outbox, keeps the other messages' tracking intact when several were
+queued during an offline streak and flushed together on reconnect.
+
+This implicit clear is a **fallback**, so it is skipped when an explicit ACK already
+settled the turn that is completing. Both paths otherwise run for the same turn: the ACK
+retires its own entry, then the turn-completing event clears the oldest *remaining* entry,
+which belongs to a different, still-in-flight message. That would strip the newer message's
+delivery tracking (and its Retry affordance) before its own turn ever ran. It needs two
+entries pending at once, so whether it can be reached depends on the **consumer**: the
+module exports `ChatInput` but never renders it, so it cannot assume the host disables the
+composer while a turn is in flight. (The Help Center host does keep it disabled for the
+whole outage, which closes the path there.) The guard is reset at each turn boundary, so a
+backend that stops ACKing mid-session falls straight back to the implicit path on the next
+turn.
+
+System messages and approval (`convId`) sends are **best-effort**: they're sent with a
+`client_message_id` (for backend de-dupe) but are not tracked in the outbox, since they
+have no bubble/Retry affordance.
+
+## Tuning constants
+
+All in `src/constants/nfdAgents/websocket.js`:
+
+| Constant | Default | Purpose |
+|----------|---------|---------|
+| `MAX_OUTBOX_SIZE` | 50 | Outbox cap; oldest is evicted (and surfaced for Retry) first. |
+| `TYPING_TIMEOUT` | 180000 | Response-silence window; bumped by every inbound event, so it only fires on genuine silence. |

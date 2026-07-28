@@ -38,15 +38,37 @@ export const simpleHash = (str) => {
 };
 
 /**
+ * Generate a random unique id. Prefers crypto.randomUUID when available, with a timestamp+random
+ * fallback. Guards access to `crypto` itself (not just `crypto.randomUUID`) so it can't throw a
+ * ReferenceError in environments where the global is absent.
+ *
+ * @return {string} A unique id
+ */
+const generateRandomId = () => {
+	if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+		return crypto.randomUUID();
+	}
+	return `${Date.now()}-${Math.random().toString(36).substring(2, 15)}`;
+};
+
+/**
  * Generate a unique session ID
  *
  * @return {string} New session ID
  */
-export const generateSessionId = () => {
-	return crypto.randomUUID
-		? crypto.randomUUID()
-		: `${Date.now()}-${Math.random().toString(36).substring(2, 15)}`;
-};
+export const generateSessionId = () => generateRandomId();
+
+/**
+ * Generate a unique per-message client ID.
+ *
+ * Sent to the backend as `client_message_id` on every outbound chat frame. The
+ * backend echoes it back in a `message_received` ACK and uses it for de-duplication,
+ * so the SAME id must be reused when a message is resent (e.g. after a reconnect) to
+ * stay idempotent.
+ *
+ * @return {string} New client message ID
+ */
+export const generateClientMessageId = () => generateRandomId();
 
 /**
  * Debounce function
@@ -71,5 +93,6 @@ export default {
 	unescapeAiResponse,
 	simpleHash,
 	generateSessionId,
+	generateClientMessageId,
 	debounce,
 };

@@ -13,11 +13,7 @@
  * path linkification). This file owns the markdown core itself.
  */
 
-import {
-	enhanceHtml,
-	enhanceText,
-	hasEnhancementSignal,
-} from "./messageEnhancers";
+import { enhanceHtml, enhanceText, hasEnhancementSignal } from "./messageEnhancers";
 
 /**
  * Words to strip from the end of a URL when they were incorrectly included
@@ -71,10 +67,7 @@ const PROSE_WORDS_THEN_URL = new RegExp(
 );
 
 /** Trailing /Word at end of URL (e.g. path/If) - strip Word from URL. */
-const TRAILING_SLASH_WORD = new RegExp(
-	`\\/(${SENTENCE_STARTER_WORDS_AFTER_URL.join("|")})$`,
-	"i"
-);
+const TRAILING_SLASH_WORD = new RegExp(`\\/(${SENTENCE_STARTER_WORDS_AFTER_URL.join("|")})$`, "i");
 
 /** Trailing digit+Word at end of URL (e.g. ?p=58Is) - strip Word from URL. */
 const TRAILING_DIGIT_WORD = new RegExp(
@@ -82,7 +75,7 @@ const TRAILING_DIGIT_WORD = new RegExp(
 	"i"
 );
 
-const URL_ONLY_PATTERN = /^https?:\/\/[^\s<>"]+$/;
+const URL_ONLY_PATTERN = /^https?:\/\/[^\s<>"*]+$/;
 
 // ---------- Inline list normalization ----------
 // Some backends emit lists as a single paragraph, e.g.
@@ -127,10 +120,7 @@ const TRAILING_CUE_SOURCES = [
 	"Should I\\b",
 	"Tell me\\b",
 ];
-const TRAILING_CUE_RE = new RegExp(
-	`\\s((?:${TRAILING_CUE_SOURCES.join("|")}).*)$`,
-	"i"
-);
+const TRAILING_CUE_RE = new RegExp(`\\s((?:${TRAILING_CUE_SOURCES.join("|")}).*)$`, "i");
 
 // Tail shape we look for in items when learning the closing pattern:
 // " <separator> <word>" at end of an item, e.g. " — published".
@@ -148,8 +138,7 @@ function detectBulletedList(line) {
 		// prevents counting a marker that sits at the very start of the line.
 		const re = new RegExp(`(?<=\\S) ${escapeForRegex(marker)} `, "g");
 		const raw = [...line.matchAll(re)];
-		const minSeps =
-			(marker === "—" ? EM_DASH_MIN_ITEMS : INLINE_LIST_MIN_ITEMS) - 1;
+		const minSeps = (marker === "—" ? EM_DASH_MIN_ITEMS : INLINE_LIST_MIN_ITEMS) - 1;
 		if (raw.length >= minSeps) {
 			candidates.push({ marker, raw });
 		}
@@ -223,6 +212,7 @@ function detectInlineList(line) {
  * e.g. "Nvidia RTX 2090 — published View them in WooCommerce: <url>" — items
  * 0..8 all end with " — published" or " — draft", so we know "published"
  * marks the end of an item and anything after it in the last item is trailing.
+ * @param items
  */
 function trailingByLearnedPattern(items) {
 	if (items.length < INLINE_LIST_MIN_ITEMS) {
@@ -251,10 +241,7 @@ function trailingByLearnedPattern(items) {
 	}
 	const vocab = new Set(tails.map((t) => t.word.toLowerCase()));
 	const wordsAlt = [...vocab].map(escapeForRegex).join("|");
-	const splitRe = new RegExp(
-		`(\\s+${escapeForRegex(sep)}\\s+)(${wordsAlt})\\b\\s+(\\S.*)$`,
-		"i"
-	);
+	const splitRe = new RegExp(`(\\s+${escapeForRegex(sep)}\\s+)(${wordsAlt})\\b\\s+(\\S.*)$`, "i");
 
 	if (stopIdx === items.length) {
 		// All but last matched — split the last item at the tail boundary.
@@ -282,8 +269,7 @@ function trailingByLearnedPattern(items) {
 	const cleanBroken = brokenItem.slice(0, wordEnd).trim();
 	const overflow = lm[3].trim();
 	const rest = items.slice(stopIdx + 1);
-	const trailing =
-		rest.length > 0 ? `${overflow} - ${rest.join(" - ")}` : overflow;
+	const trailing = rest.length > 0 ? `${overflow} - ${rest.join(" - ")}` : overflow;
 	return {
 		items: items.slice(0, stopIdx).concat(cleanBroken),
 		trailing,
@@ -309,8 +295,8 @@ function trailingByCue(items) {
  *   "Title — status — edit: <url>" repeated, with a closing sentence after
  *   the last URL.
  */
-const URL_RE = /https?:\/\/[^\s<>"]+/g;
-const URL_AT_END_RE = /https?:\/\/[^\s<>"]+\s*$/;
+const URL_RE = /https?:\/\/[^\s<>"*]+/g;
+const URL_AT_END_RE = /https?:\/\/[^\s<>"*]+\s*$/;
 
 function trailingByUrlBoundary(items) {
 	if (items.length < INLINE_LIST_MIN_ITEMS) {
@@ -342,6 +328,7 @@ function trailingByUrlBoundary(items) {
  * Detect and split off any closing sentence appended to the last list item.
  * Tries pattern-based detection first (scales without a hardcoded vocabulary),
  * then a URL-boundary heuristic, and falls back to closing-phrase cues.
+ * @param items
  */
 function applyTrailingSplit(items) {
 	return (
@@ -536,10 +523,10 @@ export function containsMarkdown(text) {
  * typewriter effect should render the final HTML once and reveal it in the
  * DOM via the useTypewriterReveal hook rather than re-parsing partial text.
  *
- * @param {string} text             - The markdown text to parse.
- * @param {object} [options]        - Options object (currently unused; the
- *                                    previously-supported `streaming` flag is
- *                                    ignored — full pipeline always runs).
+ * @param {string} text      - The markdown text to parse.
+ * @param {Object} [options] - Options object (currently unused; the
+ *                           previously-supported `streaming` flag is
+ *                           ignored — full pipeline always runs).
  * @return {string} HTML string.
  */
 // eslint-disable-next-line no-unused-vars
@@ -564,7 +551,7 @@ export function parseMarkdown(text, options) {
 	// picked up by the bold/italic regexes below. Restored just before the
 	// final bare-URL linkification pass.
 	const urlPlaceholders = [];
-	html = html.replace(/https?:\/\/[^\s<>"]+/g, (url) => {
+	html = html.replace(/https?:\/\/[^\s<>"*]+/g, (url) => {
 		const idx = urlPlaceholders.length;
 		urlPlaceholders.push(url);
 		return `U${idx}`;
@@ -596,32 +583,28 @@ export function parseMarkdown(text, options) {
 	html = html.replace(/(?<![_*])_(?!_)([^_\n]+)(?<!_)_(?!_)/g, "<em>$1</em>");
 
 	// Links [text](url) - trim leading prose words from link text when rest is a URL
-	html = html.replace(
-		/\[([^\]]+)\]\(([^)]+)\)/g,
-		(match, text, url) => {
-			const trimmedText = text.trim();
-			const leadingMatch = trimmedText.match(PROSE_WORDS_THEN_URL);
-			const rest = leadingMatch ? leadingMatch[3].trim() : "";
-			const isRestUrl =
-				rest && (URL_ONLY_PATTERN.test(rest) || /^https?:\/\//.test(rest));
-			const safeHref = url.replace(/"/g, "&quot;");
-			if (leadingMatch && isRestUrl) {
-				const leadingWords = leadingMatch[1];
-				const safeUrlText = rest
-					.replace(/&(?![\w#]+;)/g, "&amp;")
-					.replace(/</g, "&lt;")
-					.replace(/>/g, "&gt;")
-					.replace(/"/g, "&quot;");
-				return `${leadingWords}<a href="${safeHref}" target="_blank" rel="noopener noreferrer">${safeUrlText}</a>`;
-			}
-			const safeText = text
-				.replace(/&/g, "&amp;")
+	html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (match, text, url) => {
+		const trimmedText = text.trim();
+		const leadingMatch = trimmedText.match(PROSE_WORDS_THEN_URL);
+		const rest = leadingMatch ? leadingMatch[3].trim() : "";
+		const isRestUrl = rest && (URL_ONLY_PATTERN.test(rest) || /^https?:\/\//.test(rest));
+		const safeHref = url.replace(/"/g, "&quot;");
+		if (leadingMatch && isRestUrl) {
+			const leadingWords = leadingMatch[1];
+			const safeUrlText = rest
+				.replace(/&(?![\w#]+;)/g, "&amp;")
 				.replace(/</g, "&lt;")
 				.replace(/>/g, "&gt;")
 				.replace(/"/g, "&quot;");
-			return `<a href="${safeHref}" target="_blank" rel="noopener noreferrer">${safeText}</a>`;
+			return `${leadingWords}<a href="${safeHref}" target="_blank" rel="noopener noreferrer">${safeUrlText}</a>`;
 		}
-	);
+		const safeText = text
+			.replace(/&/g, "&amp;")
+			.replace(/</g, "&lt;")
+			.replace(/>/g, "&gt;")
+			.replace(/"/g, "&quot;");
+		return `<a href="${safeHref}" target="_blank" rel="noopener noreferrer">${safeText}</a>`;
+	});
 
 	// Unordered lists - collect consecutive list items
 	html = html.replace(/^(\s*)[-*+]\s+(.+)$/gm, (match, indent, content) => {
@@ -629,8 +612,13 @@ export function parseMarkdown(text, options) {
 		return `<li class="chat-li" data-level="${level}">${content}</li>`;
 	});
 
-	// Wrap consecutive list items in <ul>
-	html = html.replace(/((?:<li[^>]*>.*?<\/li>\s*)+)/g, (match) => {
+	// Wrap consecutive list items in <ul>.
+	// The trailing whitespace after the last </li> must NOT be consumed into
+	// the match — doing so eats the paragraph-break `\n\n` between the list
+	// and any prose that follows, causing the next paragraph to fuse onto
+	// the list block at render time. Allow whitespace only as a SEPARATOR
+	// between consecutive <li> items, not as a trailing tail.
+	html = html.replace(/(<li[^>]*>.*?<\/li>(?:\s*<li[^>]*>.*?<\/li>)*)/g, (match) => {
 		const cleanedItems = match.replace(/(<\/li>)\s+(<li)/g, "$1$2");
 		return `<ul class="chat-ul">${cleanedItems}</ul>`;
 	});
@@ -641,8 +629,9 @@ export function parseMarkdown(text, options) {
 		return `<oli class="chat-oli" data-level="${level}">${content}</oli>`;
 	});
 
-	// Wrap consecutive ordered list items in <ol>
-	html = html.replace(/((?:<oli[^>]*>.*?<\/oli>\s*)+)/g, (match) => {
+	// Wrap consecutive ordered list items in <ol>. Same whitespace
+	// constraint as <ul> above — separator-only, not trailing tail.
+	html = html.replace(/(<oli[^>]*>.*?<\/oli>(?:\s*<oli[^>]*>.*?<\/oli>)*)/g, (match) => {
 		const cleanedItems = match
 			.replace(/(<\/oli>)\s+(<oli)/g, "$1$2")
 			.replace(/<\/?oli/g, (m) => m.replace("oli", "li"));
@@ -742,46 +731,39 @@ export function linkifyUrls(text) {
 		return "";
 	}
 	// Pre-pass: insert space between leading word and "http(s)://" so "Wouldhttp://" -> "Would http://"
-	let normalizedText = text.replace(
-		WORD_BEFORE_URL_NO_SPACE,
-		"$1 $2"
-	);
+	const normalizedText = text.replace(WORD_BEFORE_URL_NO_SPACE, "$1 $2");
 	// Match URL only at start or after whitespace/opening punctuation (word boundary)
-	const urlPatternWithBoundary =
-		/(^|[\s(\["'])(https?:\/\/[^\s<>"]*(?:\n[^\s<>"]*)*)/g;
-	return normalizedText.replace(
-		urlPatternWithBoundary,
-		(fullMatch, before, url) => {
-			// Normalize: remove internal whitespace/newlines so href is valid
-			const normalized = url.replace(/\s+/g, "").trim();
-			let trimmed = normalized.replace(/[.,;:!?)\]]+$/, "");
-			let wordAfterLink = "";
-			// Strip trailing /Word or digit+Word (words after URL glued in - e.g. ".../If" or "?p=58Is")
-			const slashMatch = trimmed.match(TRAILING_SLASH_WORD);
-			if (slashMatch) {
-				wordAfterLink = slashMatch[1];
-				trimmed = trimmed.replace(TRAILING_SLASH_WORD, "");
-			}
-			const digitWordMatch = trimmed.match(TRAILING_DIGIT_WORD);
-			if (digitWordMatch) {
-				wordAfterLink = digitWordMatch[2];
-				trimmed = trimmed.replace(TRAILING_DIGIT_WORD, "$1");
-			}
-			if (!trimmed) {
-				return fullMatch;
-			}
-			const safeHref = trimmed.replace(/"/g, "&quot;");
-			// Entity-preserving escape: don't re-encode existing entities like
-			// the `&amp;` that the parser's HTML escape pass has already
-			// produced for query strings (e.g. "?post=51&action=edit").
-			const safeText = trimmed
-				.replace(/&(?![\w#]+;)/g, "&amp;")
-				.replace(/</g, "&lt;")
-				.replace(/>/g, "&gt;")
-				.replace(/"/g, "&quot;");
-			return `${before ?? ""}<a href="${safeHref}" target="_blank" rel="noopener noreferrer">${safeText}</a>${wordAfterLink ? " " + wordAfterLink : ""}`;
+	const urlPatternWithBoundary = /(^|[\s(\["'])(https?:\/\/[^\s<>"*]*(?:\n[^\s<>"*]*)*)/g;
+	return normalizedText.replace(urlPatternWithBoundary, (fullMatch, before, url) => {
+		// Normalize: remove internal whitespace/newlines so href is valid
+		const normalized = url.replace(/\s+/g, "").trim();
+		let trimmed = normalized.replace(/[.,;:!?)\]]+$/, "");
+		let wordAfterLink = "";
+		// Strip trailing /Word or digit+Word (words after URL glued in - e.g. ".../If" or "?p=58Is")
+		const slashMatch = trimmed.match(TRAILING_SLASH_WORD);
+		if (slashMatch) {
+			wordAfterLink = slashMatch[1];
+			trimmed = trimmed.replace(TRAILING_SLASH_WORD, "");
 		}
-	);
+		const digitWordMatch = trimmed.match(TRAILING_DIGIT_WORD);
+		if (digitWordMatch) {
+			wordAfterLink = digitWordMatch[2];
+			trimmed = trimmed.replace(TRAILING_DIGIT_WORD, "$1");
+		}
+		if (!trimmed) {
+			return fullMatch;
+		}
+		const safeHref = trimmed.replace(/"/g, "&quot;");
+		// Entity-preserving escape: don't re-encode existing entities like
+		// the `&amp;` that the parser's HTML escape pass has already
+		// produced for query strings (e.g. "?post=51&action=edit").
+		const safeText = trimmed
+			.replace(/&(?![\w#]+;)/g, "&amp;")
+			.replace(/</g, "&lt;")
+			.replace(/>/g, "&gt;")
+			.replace(/"/g, "&quot;");
+		return `${before ?? ""}<a href="${safeHref}" target="_blank" rel="noopener noreferrer">${safeText}</a>${wordAfterLink ? " " + wordAfterLink : ""}`;
+	});
 }
 
 export default {

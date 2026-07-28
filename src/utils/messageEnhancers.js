@@ -40,6 +40,8 @@ function escapeHtml(str) {
  * Transform every text node in an HTML string. The chat parser produces
  * well-formed HTML where text only appears between `>` and `<`, so this
  * regex-based walk is sufficient (we don't need a real DOM parser).
+ * @param html
+ * @param transform
  */
 function eachTextNode(html, transform) {
 	return html.replace(/>([^<]*)</g, (match, text) => {
@@ -93,10 +95,7 @@ const STATUS_WORDS_ALT = Object.keys(STATUS_TONES).map(escapeForRegex).join("|")
 // Match a separator (em-/en-dash, hyphen, pipe, colon) followed by a known
 // status word. We require a separator so we don't badge bare words appearing
 // mid-sentence ("the post is published").
-const STATUS_RE = new RegExp(
-	`(\\s+[—–\\-|:]\\s+)(${STATUS_WORDS_ALT})\\b`,
-	"gi"
-);
+const STATUS_RE = new RegExp(`(\\s+[—–\\-|:]\\s+)(${STATUS_WORDS_ALT})\\b`, "gi");
 
 function renderStatusBadges(html) {
 	return eachTextNode(html, (text) =>
@@ -115,8 +114,7 @@ function renderStatusBadges(html) {
 // site-relative links so they're clickable in both wp-admin and front-end
 // embeds.
 
-const WP_PATH_RE =
-	/(^|[\s(\["'])(\/wp-(?:admin|content|json|includes)\/[^\s<>"')]+)/g;
+const WP_PATH_RE = /(^|[\s(\["'])(\/wp-(?:admin|content|json|includes)\/[^\s<>"')]+)/g;
 
 function linkifyAdminPaths(html) {
 	return eachTextNode(html, (text) => {
@@ -156,9 +154,7 @@ const CALLOUT_TYPES = {
 	important: "warn",
 };
 
-const CALLOUT_KINDS_ALT = Object.keys(CALLOUT_TYPES)
-	.map(escapeForRegex)
-	.join("|");
+const CALLOUT_KINDS_ALT = Object.keys(CALLOUT_TYPES).map(escapeForRegex).join("|");
 const CALLOUT_HTML_RE = new RegExp(
 	`<p([^>]*)>\\s*(${CALLOUT_KINDS_ALT}):\\s+([\\s\\S]*?)<\\/p>`,
 	"gi"
@@ -182,10 +178,7 @@ function decorateCallouts(html) {
 const KV_PAIR_RE = /^([A-Z][A-Za-z0-9 _-]{0,30}):\s+(.+)$/;
 
 function normalizeKeyValuePairs(text) {
-	return text
-		.split("\n")
-		.map(transformKvLine)
-		.join("\n");
+	return text.split("\n").map(transformKvLine).join("\n");
 }
 
 function transformKvLine(line) {
@@ -213,28 +206,16 @@ function transformKvLine(line) {
 
 // -------- pipelines --------
 
-const TEXT_ENHANCERS = [
-	normalizeKeyValuePairs,
-];
+const TEXT_ENHANCERS = [normalizeKeyValuePairs];
 
-const HTML_ENHANCERS = [
-	decorateCallouts,
-	renderStatusBadges,
-	linkifyAdminPaths,
-];
+const HTML_ENHANCERS = [decorateCallouts, renderStatusBadges, linkifyAdminPaths];
 
 // Cheap raw-text signals that any enhancer would do something with. The
 // markdown gatekeeper (containsMarkdown) consults this so that messages
 // that contain ONLY enhancer-eligible content (no other markdown cues) are
 // still routed through the markdown render path.
-const CALLOUT_SIGNAL_RE = new RegExp(
-	`^(${CALLOUT_KINDS_ALT}):\\s+`,
-	"im"
-);
-const STATUS_SIGNAL_RE = new RegExp(
-	`\\s+[—–\\-|:]\\s+(${STATUS_WORDS_ALT})\\b`,
-	"i"
-);
+const CALLOUT_SIGNAL_RE = new RegExp(`^(${CALLOUT_KINDS_ALT}):\\s+`, "im");
+const STATUS_SIGNAL_RE = new RegExp(`\\s+[—–\\-|:]\\s+(${STATUS_WORDS_ALT})\\b`, "i");
 const WP_PATH_SIGNAL_RE = /\/wp-(?:admin|content|json|includes)\//;
 
 /**

@@ -133,7 +133,7 @@ export function getLatestMessageTime(conversation) {
  * Get a short preview snippet from the most recent assistant message in the conversation.
  * Strips markdown noise and trims to a single-line excerpt suitable for a list item.
  *
- * @param {Object} conversation - Conversation with messages array
+ * @param {Object} conversation   - Conversation with messages array
  * @param {number} [maxLength=80] - Max preview length before truncation
  * @return {string} Preview string (may be empty if no assistant content found).
  */
@@ -159,7 +159,7 @@ export function getConversationPreview(conversation, maxLength = 80) {
 			.replace(/&amp;/g, "&")
 			.replace(/&lt;/g, "<")
 			.replace(/&gt;/g, ">")
-			.replace(/&quot;/g, "\"")
+			.replace(/&quot;/g, '"')
 			.replace(/&#39;|&apos;/g, "'")
 			.replace(/!\[[^\]]*\]\([^)]*\)/g, "")
 			.replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
@@ -177,7 +177,7 @@ export function getConversationPreview(conversation, maxLength = 80) {
 /**
  * Bucket key for date-based grouping ("today" | "yesterday" | "earlier").
  *
- * @param {Date} date - Reference date for the conversation
+ * @param {Date} date             - Reference date for the conversation
  * @param {Date} [now=new Date()] - Current time (override for tests)
  * @return {"today"|"yesterday"|"earlier"} Bucket key.
  */

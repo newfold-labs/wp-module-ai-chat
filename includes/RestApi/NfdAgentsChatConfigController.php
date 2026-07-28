@@ -157,12 +157,17 @@ class NfdAgentsChatConfigController extends WP_REST_Controller {
 
 		return new WP_REST_Response(
 			array(
-				'gateway_url' => $gateway_url,
-				'jarvis_jwt'  => $jarvis_jwt,
-				'site_url'    => $site_url,
-				'brand_id'    => $this->brand_helper->get_brand_id(),
-				'agent_type'  => $agent_type,
-				'site_id'     => SiteHashHelper::short_hash( $site_url, 8 ),
+				'gateway_url'       => $gateway_url,
+				'jarvis_jwt'        => $jarvis_jwt,
+				'site_url'          => $site_url,
+				'brand_id'          => $this->brand_helper->get_brand_id(),
+				'agent_type'        => $agent_type,
+				'site_id'           => SiteHashHelper::short_hash( $site_url, 8 ),
+				// Local-dev only: true when running on NFD_AI_CHAT_JARVIS_DEBUG_TOKEN, so the
+				// frontend skips its client-side JWT-expiry handling for hand-crafted test tokens
+				// that may be expired or have no `exp` claim. Never true in production (requires the
+				// constant in wp-config.php); the gateway still validates the token server-side.
+				'bypass_jwt_expiry' => $this->jarvis_jwt_helper->is_using_debug_token(),
 			)
 		);
 	}
