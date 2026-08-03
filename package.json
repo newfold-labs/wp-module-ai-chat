@@ -48,7 +48,7 @@
 		"@wordpress/icons": "^15.2.0",
 		"classnames": "^2.5.1",
 		"dompurify": "^3.4.12",
-		"lucide-react": "^1.16.0",
+		"lucide-react": "^1.28.0",
 		"openai": "^4.68.0"
 	}
 }
