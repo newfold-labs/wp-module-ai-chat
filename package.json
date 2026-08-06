@@ -47,7 +47,7 @@
 		"@modelcontextprotocol/sdk": "^1.0.0",
 		"@wordpress/icons": "^15.3.0",
 		"classnames": "^2.5.1",
-		"dompurify": "^3.4.12",
+		"dompurify": "^3.4.13",
 		"lucide-react": "^1.28.0",
 		"openai": "^4.68.0"
 	}
