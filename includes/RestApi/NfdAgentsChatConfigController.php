@@ -127,6 +127,12 @@ class NfdAgentsChatConfigController extends WP_REST_Controller {
 			);
 		}
 
+		// Configuration is limited to authenticated administrators, consistent with the MCP
+		// transport permission check in wp-module-mcp.
+		if ( ! is_user_logged_in() || ! current_user_can( 'manage_options' ) ) {
+			return false;
+		}
+
 		$capabilities = new SiteCapabilities();
 		return $capabilities->get( $capability, false );
 	}
