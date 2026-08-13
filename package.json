@@ -22,6 +22,7 @@
 	"scripts": {
 		"build": "wp-scripts build ./src/index.js --config ./scripts/webpack.config.js",
 		"lint": "wp-scripts lint-js ./src",
+		"test:unit": "wp-scripts test-unit-js",
 		"prepublishOnly": "npm run build"
 	},
 	"peerDependencies": {
