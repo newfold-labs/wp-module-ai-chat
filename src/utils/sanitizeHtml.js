@@ -53,7 +53,11 @@ export const sanitizeHtml = (html) => {
 			"address",
 			"time",
 		],
-		ALLOWED_ATTR: ["style", "class", "id", "href", "datetime", "target", "rel"],
+		// `style` and `id` are intentionally omitted. Rendered chat content is model output passed
+		// to dangerouslySetInnerHTML, so an inline `style` allows a CSS overlay/redress of the admin
+		// UI and `id` allows DOM clobbering. The chat's own rich formatting uses `class`, so dropping
+		// these removes attacker reach without affecting legitimate rendering.
+		ALLOWED_ATTR: ["class", "href", "datetime", "target", "rel"],
 		ALLOW_DATA_ATTR: false,
 		FORBID_TAGS: [
 			"script",
