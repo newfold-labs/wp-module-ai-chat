@@ -48,4 +48,15 @@ describe("sanitizeHtml", () => {
 		expect(out).not.toContain("<script");
 		expect(out).not.toContain("evil()");
 	});
+
+	it("neuters dangerous URL schemes on kept href attributes", () => {
+		// `href` stays allowed, so pin that unsafe schemes do not survive on it.
+		for (const scheme of ["javascript:alert(1)", "data:text/html,<x>", "vbscript:msgbox(1)"]) {
+			const out = sanitizeHtml(`<a href="${scheme}">link</a>`);
+			expect(out).toContain("link");
+			expect(out).not.toContain("javascript:");
+			expect(out).not.toContain("data:text/html");
+			expect(out).not.toContain("vbscript:");
+		}
+	});
 });
