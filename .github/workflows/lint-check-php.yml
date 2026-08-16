@@ -15,10 +15,18 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.head_ref || github.sha }}
   cancel-in-progress: true
 
+# Disable permissions for all available scopes by default.
+# Any needed permissions should be configured at the job level.
+permissions: {}
+
 jobs:
   phpcs:
     name: Run PHP Code Sniffer
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read       # Required to clone the repo.
+      pull-requests: read  # Required by technote-space/get-diff-action to look up PRs for the pushed branch on push events.
     steps:
 
       - name: Checkout
