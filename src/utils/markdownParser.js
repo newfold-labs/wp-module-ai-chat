@@ -725,7 +725,7 @@ function linkifyBareUrlsInHtml(html) {
 		return "";
 	}
 	// Existing anchors are skipped so link text that is itself a URL isn't wrapped twice.
-	return html.replace(/(<a\b[^>]*>[\s\S]*?<\/a>)|>([^<]*)(?=<)/g, (match, anchor, textNode) =>
+	return html.replace(/(<a\b[^>]*>[\s\S]*?<\/a)(?=>)|>([^<]*)(?=<)/g, (match, anchor, textNode) =>
 		anchor ? anchor : ">" + linkifyUrls(textNode)
 	);
 }

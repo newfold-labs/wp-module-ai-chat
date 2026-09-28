@@ -60,6 +60,11 @@ describe("parseMarkdown links", () => {
 		expect(out).toContain(">https://site.com/page</a>?");
 	});
 
+	it("linkifies a bare URL that follows a markdown link", () => {
+		const out = parseMarkdown("[Docs](https://a.com/docs) or https://b.com/help");
+		expect(hrefs(out)).toEqual(["https://a.com/docs", "https://b.com/help"]);
+	});
+
 	it("renders links inside list items", () => {
 		const out = parseMarkdown("- Item one: https://a.com/1\n- Item two: [B](https://b.com/2)");
 		expect(hrefs(out)).toEqual(["https://a.com/1", "https://b.com/2"]);
