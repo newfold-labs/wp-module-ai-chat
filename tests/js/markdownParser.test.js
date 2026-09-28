@@ -2,7 +2,7 @@
  * Tests for link handling in the chat markdown parser.
  */
 
-import { parseMarkdown, linkifyUrls } from "./markdownParser";
+import { parseMarkdown, linkifyUrls } from "../../src/utils/markdownParser";
 
 const hrefs = (html) => [...html.matchAll(/href="([^"]*)"/g)].map((m) => m[1]);
 
