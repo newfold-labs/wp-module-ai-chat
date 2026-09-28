@@ -77,6 +77,11 @@ const TRAILING_DIGIT_WORD = new RegExp(
 
 const URL_ONLY_PATTERN = /^https?:\/\/[^\s<>"*]+$/;
 
+const BARE_URL_RE = /https?:\/\/[^\s<>"*]+/g;
+
+/** [text](http-url), allowing one level of balanced parens in the URL. */
+const MARKDOWN_URL_LINK_RE = /\[([^\]]+)\]\((https?:\/\/(?:[^\s()<>"]|\([^\s()<>"]*\))+)\)/g;
+
 // ---------- Inline list normalization ----------
 // Some backends emit lists as a single paragraph, e.g.
 //   "Here are the posts: - A — published - B — draft - C — draft You can view ..."
@@ -551,11 +556,18 @@ export function parseMarkdown(text, options) {
 	// picked up by the bold/italic regexes below. Restored just before the
 	// final bare-URL linkification pass.
 	const urlPlaceholders = [];
-	html = html.replace(/https?:\/\/[^\s<>"*]+/g, (url) => {
+	const stashUrl = (url) => {
 		const idx = urlPlaceholders.length;
 		urlPlaceholders.push(url);
 		return `U${idx}`;
+	};
+	const restoreUrls = (str) =>
+		str.replace(/U(\d+)/g, (token, idx) => urlPlaceholders[Number(idx)] ?? token);
+	// Markdown links first, so the bare-URL pass can't swallow the `](` / `)` syntax.
+	html = html.replace(MARKDOWN_URL_LINK_RE, (match, linkText, url) => {
+		return `[${linkText.replace(BARE_URL_RE, stashUrl)}](${stashUrl(url)})`;
 	});
+	html = html.replace(BARE_URL_RE, stashUrl);
 
 	// Code blocks (``` ... ```) - must be done before other processing
 	html = html.replace(/```(\w*)\n?([\s\S]*?)```/g, (match, lang, code) => {
@@ -583,8 +595,9 @@ export function parseMarkdown(text, options) {
 	html = html.replace(/(?<![_*])_(?!_)([^_\n]+)(?<!_)_(?!_)/g, "<em>$1</em>");
 
 	// Links [text](url) - trim leading prose words from link text when rest is a URL
-	html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (match, text, url) => {
-		const trimmedText = text.trim();
+	html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (match, rawText, url) => {
+		const linkText = restoreUrls(rawText);
+		const trimmedText = linkText.trim();
 		const leadingMatch = trimmedText.match(PROSE_WORDS_THEN_URL);
 		const rest = leadingMatch ? leadingMatch[3].trim() : "";
 		const isRestUrl = rest && (URL_ONLY_PATTERN.test(rest) || /^https?:\/\//.test(rest));
@@ -598,7 +611,7 @@ export function parseMarkdown(text, options) {
 				.replace(/"/g, "&quot;");
 			return `${leadingWords}<a href="${safeHref}" target="_blank" rel="noopener noreferrer">${safeUrlText}</a>`;
 		}
-		const safeText = text
+		const safeText = linkText
 			.replace(/&/g, "&amp;")
 			.replace(/</g, "&lt;")
 			.replace(/>/g, "&gt;")
@@ -688,12 +701,7 @@ export function parseMarkdown(text, options) {
 	// Tokens may appear in href attributes (markdown links) and in plain text
 	// (bare URLs); both get the original URL string back. Bare ones are then
 	// wrapped by linkifyBareUrlsInHtml below.
-	if (urlPlaceholders.length > 0) {
-		html = html.replace(/U(\d+)/g, (_match, idx) => {
-			const stored = urlPlaceholders[Number(idx)];
-			return stored === undefined ? _match : stored;
-		});
-	}
+	html = restoreUrls(html);
 
 	// Linkify any remaining bare URLs in text content (e.g. inside list items)
 	html = linkifyBareUrlsInHtml(html);
@@ -716,7 +724,10 @@ function linkifyBareUrlsInHtml(html) {
 	if (!html || typeof html !== "string") {
 		return "";
 	}
-	return html.replace(/>([^<]*)</g, (match, textNode) => ">" + linkifyUrls(textNode) + "<");
+	// Existing anchors are skipped so link text that is itself a URL isn't wrapped twice.
+	return html.replace(/(<a\b[^>]*>[\s\S]*?<\/a>)|>([^<]*)(?=<)/g, (match, anchor, textNode) =>
+		anchor ? anchor : ">" + linkifyUrls(textNode)
+	);
 }
 
 /**
@@ -737,7 +748,9 @@ export function linkifyUrls(text) {
 	return normalizedText.replace(urlPatternWithBoundary, (fullMatch, before, url) => {
 		// Normalize: remove internal whitespace/newlines so href is valid
 		const normalized = url.replace(/\s+/g, "").trim();
-		let trimmed = normalized.replace(/[.,;:!?)\]]+$/, "");
+		// Keep trailing punctuation as text after the link instead of dropping it.
+		const trailingPunct = normalized.match(/[.,;:!?)\]]+$/)?.[0] ?? "";
+		let trimmed = normalized.slice(0, normalized.length - trailingPunct.length);
 		let wordAfterLink = "";
 		// Strip trailing /Word or digit+Word (words after URL glued in - e.g. ".../If" or "?p=58Is")
 		const slashMatch = trimmed.match(TRAILING_SLASH_WORD);
@@ -762,7 +775,7 @@ export function linkifyUrls(text) {
 			.replace(/</g, "&lt;")
 			.replace(/>/g, "&gt;")
 			.replace(/"/g, "&quot;");
-		return `${before ?? ""}<a href="${safeHref}" target="_blank" rel="noopener noreferrer">${safeText}</a>${wordAfterLink ? " " + wordAfterLink : ""}`;
+		return `${before ?? ""}<a href="${safeHref}" target="_blank" rel="noopener noreferrer">${safeText}</a>${wordAfterLink ? " " + wordAfterLink : ""}${trailingPunct}`;
 	});
 }
 
