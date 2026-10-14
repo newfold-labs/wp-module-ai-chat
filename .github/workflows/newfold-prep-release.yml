@@ -22,8 +22,8 @@ jobs:
   prep-release:
     name: Prepare Release
     permissions:
-      contents: write
-      pull-requests: write
+      contents: write      # Required by the reusable workflow to commit version bumps and push the release branch.
+      pull-requests: write # Required by the reusable workflow to open the release pull request and read merged PRs via `gh pr list`.
     uses: newfold-labs/workflows/.github/workflows/reusable-module-prep-release.yml@main
     with:
       module-repo: ${{ github.repository }}
