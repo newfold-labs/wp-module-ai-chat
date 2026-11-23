@@ -37,7 +37,7 @@
 		"doctrine": "2.1.0"
 	},
 	"devDependencies": {
-		"@wordpress/eslint-plugin": "^28.1.0",
+		"@wordpress/eslint-plugin": "^28.2.0",
 		"@wordpress/prettier-config": "^5.0.0",
 		"@wordpress/scripts": "^37.1.0",
 		"eslint": "^10.15.0",
